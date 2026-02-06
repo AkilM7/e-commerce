@@ -85,6 +85,15 @@ const Header = () => {
 
               <li className="nav-item mx-lg-2">
                 <Link 
+                  className={`nav-link fw-medium ${isActive('/category') ? 'text-success active fw-bold' : 'text-dark'}`} 
+                  to="/category"
+                >
+                  Category
+                </Link>
+              </li>
+
+              <li className="nav-item mx-lg-2">
+                <Link 
                   className={`nav-link fw-medium ${isActive('/about') ? 'text-success active fw-bold' : 'text-dark'}`} 
                   to="/about"
                 >

@@ -5,34 +5,6 @@ const Footer = () => {
   return (
     <>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" />
-      {/* Newsletter Section */}
-      {/* <section className="bg-success py-5">
-        <div className="container">
-          <div className="row align-items-center">
-            <div className="col-lg-6 mb-4 mb-lg-0">
-              <h3 className="text-white fw-bold mb-2">
-                <i className="bi bi-envelope-paper me-2"></i>
-                Subscribe to Our Newsletter
-              </h3>
-              <p className="text-white opacity-75 mb-0">
-                Get the latest updates on new products and exclusive offers
-              </p>
-            </div>
-            <div className="col-lg-6">
-              <form className="d-flex gap-2">
-                <input 
-                  type="email" 
-                  className="form-control form-control-lg rounded-pill border-0" 
-                  placeholder="Enter your email address"
-                />
-                <button type="submit" className="btn btn-dark btn-lg rounded-pill px-4 fw-bold">
-                  Subscribe
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-      </section> */}
 
       {/* Main Footer */}
       <footer className="bg-dark text-white pt-5">

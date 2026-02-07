@@ -20,12 +20,14 @@ import Header from "./components/Header";
 import Footer from "./components/Footer";
 import Category from "./Pages/Category";
 import Blog from "./Pages/Blog";
+import SocialCallback from './components/SocialCallback';
 
 function App() {
   return (
     <BrowserRouter>
       <Header />
       <Routes>
+        <Route path="/auth/callback" element={<SocialCallback />} />
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />

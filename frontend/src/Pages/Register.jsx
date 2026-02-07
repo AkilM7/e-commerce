@@ -1,7 +1,10 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect, useCallback } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import api from "../api/axios";
+import debounce from "lodash/debounce";
 
 const Register = () => {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -10,29 +13,118 @@ const Register = () => {
     confirmPassword: "",
     agreeTerms: false,
   });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [checking, setChecking] = useState({ email: false, mobile: false });
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
+  // Debounced check for email/mobile existence
+  const checkExistence = useCallback(
+    debounce(async (field, value) => {
+      if (!value) return;
+      
+      setChecking((prev) => ({ ...prev, [field]: true }));
+      try {
+        const response = await api.post("/check-user-exists/", {
+          [field]: value,
+        });
+        
+        if (response.data.exists) {
+          setFieldErrors((prev) => ({
+            ...prev,
+            [field]: `This ${field} is already registered`,
+          }));
+        } else {
+          setFieldErrors((prev) => ({ ...prev, [field]: "" }));
+        }
+      } catch (err) {
+        console.error("Check existence error:", err);
+      } finally {
+        setChecking((prev) => ({ ...prev, [field]: false }));
+      }
+    }, 500),
+    []
+  );
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData({ 
-      ...formData, 
-      [name]: type === 'checkbox' ? checked : value 
+    const newValue = type === "checkbox" ? checked : value;
+    
+    setFormData({
+      ...formData,
+      [name]: newValue,
     });
+
+    // Clear field error when user starts typing
+    if (fieldErrors[name]) {
+      setFieldErrors({ ...fieldErrors, [name]: "" });
+    }
+
+    // Check email/mobile existence while typing
+    if (name === "email" || name === "mobile") {
+      checkExistence(name, newValue);
+    }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setError("");
+
+    // Check if there are field errors
+    if (fieldErrors.email || fieldErrors.mobile) {
+      setError("Please fix the errors before submitting");
+      return;
+    }
+
     if (formData.password !== formData.confirmPassword) {
-      alert("Passwords do not match!");
+      setError("Passwords do not match!");
       return;
     }
     if (!formData.agreeTerms) {
-      alert("Please agree to the terms and conditions!");
+      setError("Please agree to the terms and conditions!");
       return;
     }
-    console.log(formData);
+
+    setLoading(true);
+
+    try {
+      const response = await api.post("/register/", {
+        name: formData.name,
+        email: formData.email,
+        mobile: formData.mobile,
+        password: formData.password,
+        password_confirm: formData.confirmPassword,
+      });
+
+      // Store tokens
+      const { access, refresh, user } = response.data;
+      localStorage.setItem("access_token", access);
+      localStorage.setItem("refresh_token", refresh);
+      localStorage.setItem("user", JSON.stringify(user));
+
+      // Set auth header
+      api.defaults.headers.common["Authorization"] = `Bearer ${access}`;
+
+      // Redirect to home page immediately
+      navigate("/");
+    } catch (err) {
+      const errorMsg =
+        err.response?.data?.message ||
+        err.response?.data?.email?.[0] ||
+        err.response?.data?.mobile?.[0] ||
+        err.response?.data?.password?.[0] ||
+        "Registration failed. Please try again.";
+      setError(errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSocialRegister = (provider) => {
+    window.location.href = `http://localhost:8000/api/auth/${provider}/`;
   };
 
   return (
@@ -46,9 +138,16 @@ const Register = () => {
               <nav aria-label="breadcrumb">
                 <ol className="breadcrumb mb-0">
                   <li className="breadcrumb-item">
-                    <Link to="/" className="text-decoration-none text-muted">Home</Link>
+                    <Link to="/" className="text-decoration-none text-muted">
+                      Home
+                    </Link>
                   </li>
-                  <li className="breadcrumb-item active text-success" aria-current="page">Register</li>
+                  <li
+                    className="breadcrumb-item active text-success"
+                    aria-current="page"
+                  >
+                    Register
+                  </li>
                 </ol>
               </nav>
             </div>
@@ -68,8 +167,10 @@ const Register = () => {
               <div className="card border-0 shadow-lg rounded-4 overflow-hidden">
                 {/* Card Header */}
                 <div className="bg-success text-white text-center p-4">
-                  <div className="bg-white bg-opacity-25 rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3" 
-                       style={{ width: "70px", height: "70px" }}>
+                  <div
+                    className="bg-white bg-opacity-25 rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3"
+                    style={{ width: "70px", height: "70px" }}
+                  >
                     <i className="bi bi-person-plus-fill fs-1"></i>
                   </div>
                   <h3 className="fw-bold mb-1">Create Account!</h3>
@@ -77,10 +178,28 @@ const Register = () => {
                 </div>
 
                 <div className="card-body p-4 p-md-5">
+                  {/* Error Alert */}
+                  {error && (
+                    <div
+                      className="alert alert-danger alert-dismissible fade show"
+                      role="alert"
+                    >
+                      <i className="bi bi-exclamation-triangle-fill me-2"></i>
+                      {error}
+                      <button
+                        type="button"
+                        className="btn-close"
+                        onClick={() => setError("")}
+                      ></button>
+                    </div>
+                  )}
+
                   <form onSubmit={handleSubmit}>
                     {/* Full Name */}
                     <div className="mb-3">
-                      <label className="form-label fw-medium text-muted small">FULL NAME</label>
+                      <label className="form-label fw-medium text-muted small">
+                        FULL NAME
+                      </label>
                       <div className="input-group">
                         <span className="input-group-text bg-light border-end-0">
                           <i className="bi bi-person text-success"></i>
@@ -90,6 +209,7 @@ const Register = () => {
                           name="name"
                           className="form-control border-start-0 bg-light"
                           placeholder="Enter your full name"
+                          value={formData.name}
                           onChange={handleChange}
                           required
                         />
@@ -99,7 +219,9 @@ const Register = () => {
                     {/* Email & Mobile Row */}
                     <div className="row g-2">
                       <div className="col-md-7 mb-3">
-                        <label className="form-label fw-medium text-muted small">EMAIL ADDRESS</label>
+                        <label className="form-label fw-medium text-muted small">
+                          EMAIL ADDRESS
+                        </label>
                         <div className="input-group">
                           <span className="input-group-text bg-light border-end-0">
                             <i className="bi bi-envelope text-success"></i>
@@ -107,15 +229,33 @@ const Register = () => {
                           <input
                             type="email"
                             name="email"
-                            className="form-control border-start-0 bg-light"
+                            className={`form-control border-start-0 bg-light ${
+                              fieldErrors.email ? "is-invalid" : ""
+                            }`}
                             placeholder="Enter email"
+                            value={formData.email}
                             onChange={handleChange}
                             required
                           />
+                          {checking.email && (
+                            <span className="input-group-text bg-light">
+                              <span
+                                className="spinner-border spinner-border-sm"
+                                role="status"
+                              ></span>
+                            </span>
+                          )}
                         </div>
+                        {fieldErrors.email && (
+                          <div className="invalid-feedback d-block">
+                            {fieldErrors.email}
+                          </div>
+                        )}
                       </div>
                       <div className="col-md-5 mb-3">
-                        <label className="form-label fw-medium text-muted small">MOBILE</label>
+                        <label className="form-label fw-medium text-muted small">
+                          MOBILE
+                        </label>
                         <div className="input-group">
                           <span className="input-group-text bg-light border-end-0">
                             <i className="bi bi-phone text-success"></i>
@@ -123,18 +263,36 @@ const Register = () => {
                           <input
                             type="tel"
                             name="mobile"
-                            className="form-control border-start-0 bg-light"
+                            className={`form-control border-start-0 bg-light ${
+                              fieldErrors.mobile ? "is-invalid" : ""
+                            }`}
                             placeholder="Mobile"
+                            value={formData.mobile}
                             onChange={handleChange}
                             required
                           />
+                          {checking.mobile && (
+                            <span className="input-group-text bg-light">
+                              <span
+                                className="spinner-border spinner-border-sm"
+                                role="status"
+                              ></span>
+                            </span>
+                          )}
                         </div>
+                        {fieldErrors.mobile && (
+                          <div className="invalid-feedback d-block">
+                            {fieldErrors.mobile}
+                          </div>
+                        )}
                       </div>
                     </div>
 
                     {/* Password */}
                     <div className="mb-3">
-                      <label className="form-label fw-medium text-muted small">PASSWORD</label>
+                      <label className="form-label fw-medium text-muted small">
+                        PASSWORD
+                      </label>
                       <div className="input-group">
                         <span className="input-group-text bg-light border-end-0">
                           <i className="bi bi-lock text-success"></i>
@@ -144,15 +302,20 @@ const Register = () => {
                           name="password"
                           className="form-control border-start-0 border-end-0 bg-light"
                           placeholder="Create password"
+                          value={formData.password}
                           onChange={handleChange}
                           required
                         />
-                        <span 
+                        <span
                           className="input-group-text bg-light border-start-0"
                           onClick={() => setShowPassword(!showPassword)}
                           style={{ cursor: "pointer" }}
                         >
-                          <i className={`bi ${showPassword ? "bi-eye-slash" : "bi-eye"} text-muted`}></i>
+                          <i
+                            className={`bi ${
+                              showPassword ? "bi-eye-slash" : "bi-eye"
+                            } text-muted`}
+                          ></i>
                         </span>
                       </div>
                       <div className="form-text small">
@@ -163,7 +326,9 @@ const Register = () => {
 
                     {/* Confirm Password */}
                     <div className="mb-3">
-                      <label className="form-label fw-medium text-muted small">CONFIRM PASSWORD</label>
+                      <label className="form-label fw-medium text-muted small">
+                        CONFIRM PASSWORD
+                      </label>
                       <div className="input-group">
                         <span className="input-group-text bg-light border-end-0">
                           <i className="bi bi-lock-fill text-success"></i>
@@ -173,15 +338,24 @@ const Register = () => {
                           name="confirmPassword"
                           className="form-control border-start-0 border-end-0 bg-light"
                           placeholder="Confirm password"
+                          value={formData.confirmPassword}
                           onChange={handleChange}
                           required
                         />
-                        <span 
+                        <span
                           className="input-group-text bg-light border-start-0"
-                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          onClick={() =>
+                            setShowConfirmPassword(!showConfirmPassword)
+                          }
                           style={{ cursor: "pointer" }}
                         >
-                          <i className={`bi ${showConfirmPassword ? "bi-eye-slash" : "bi-eye"} text-muted`}></i>
+                          <i
+                            className={`bi ${
+                              showConfirmPassword
+                                ? "bi-eye-slash"
+                                : "bi-eye"
+                            } text-muted`}
+                          ></i>
                         </span>
                       </div>
                     </div>
@@ -194,36 +368,86 @@ const Register = () => {
                           name="agreeTerms"
                           className="form-check-input"
                           id="agreeTerms"
+                          checked={formData.agreeTerms}
                           onChange={handleChange}
                           required
                         />
-                        <label className="form-check-label text-muted small" htmlFor="agreeTerms">
-                          I agree to the <Link to="/terms" className="text-success text-decoration-none">Terms of Service</Link> and <Link to="/privacy" className="text-success text-decoration-none">Privacy Policy</Link>
+                        <label
+                          className="form-check-label text-muted small"
+                          htmlFor="agreeTerms"
+                        >
+                          I agree to the{" "}
+                          <Link
+                            to="/terms"
+                            className="text-success text-decoration-none"
+                          >
+                            Terms of Service
+                          </Link>{" "}
+                          and{" "}
+                          <Link
+                            to="/privacy"
+                            className="text-success text-decoration-none"
+                          >
+                            Privacy Policy
+                          </Link>
                         </label>
                       </div>
                     </div>
 
                     {/* Submit Button */}
-                    <button type="submit" className="btn btn-success btn-lg w-100 rounded-pill mb-4">
-                      <i className="bi bi-person-plus me-2"></i>
-                      Create Account
+                    <button
+                      type="submit"
+                      className="btn btn-success btn-lg w-100 rounded-pill mb-4"
+                      disabled={
+                        loading ||
+                        fieldErrors.email ||
+                        fieldErrors.mobile ||
+                        checking.email ||
+                        checking.mobile
+                      }
+                    >
+                      {loading ? (
+                        <>
+                          <span
+                            className="spinner-border spinner-border-sm me-2"
+                            role="status"
+                            aria-hidden="true"
+                          ></span>
+                          Creating Account...
+                        </>
+                      ) : (
+                        <>
+                          <i className="bi bi-person-plus me-2"></i>
+                          Create Account
+                        </>
+                      )}
                     </button>
 
                     {/* Divider */}
                     <div className="text-center mb-4">
-                      <span className="text-muted small">OR SIGN UP WITH</span>
+                      <span className="text-muted small">
+                        OR SIGN UP WITH
+                      </span>
                     </div>
 
                     {/* Social Register */}
                     <div className="row g-2 mb-4">
                       <div className="col-6">
-                        <button type="button" className="btn btn-outline-secondary w-100 rounded-pill">
+                        <button
+                          type="button"
+                          className="btn btn-outline-secondary w-100 rounded-pill"
+                          onClick={() => handleSocialRegister("google")}
+                        >
                           <i className="bi bi-google text-danger me-2"></i>
                           Google
                         </button>
                       </div>
                       <div className="col-6">
-                        <button type="button" className="btn btn-outline-secondary w-100 rounded-pill">
+                        <button
+                          type="button"
+                          className="btn btn-outline-secondary w-100 rounded-pill"
+                          onClick={() => handleSocialRegister("facebook")}
+                        >
                           <i className="bi bi-facebook text-primary me-2"></i>
                           Facebook
                         </button>
@@ -234,8 +458,11 @@ const Register = () => {
                   {/* Login Link */}
                   <div className="text-center pt-3 border-top">
                     <p className="text-muted mb-0">
-                      Already have an account? 
-                      <Link to="/login" className="text-success fw-bold text-decoration-none ms-1">
+                      Already have an account?
+                      <Link
+                        to="/login"
+                        className="text-success fw-bold text-decoration-none ms-1"
+                      >
                         Sign In
                       </Link>
                     </p>
@@ -254,7 +481,9 @@ const Register = () => {
                 <div className="col-4 text-center">
                   <div className="bg-white rounded-3 shadow-sm p-3">
                     <i className="bi bi-gift text-success fs-3 mb-2 d-block"></i>
-                    <small className="text-muted d-block">Special Offers</small>
+                    <small className="text-muted d-block">
+                      Special Offers
+                    </small>
                   </div>
                 </div>
                 <div className="col-4 text-center">

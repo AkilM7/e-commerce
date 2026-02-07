@@ -40,10 +40,10 @@ class User(AbstractBaseUser, PermissionsMixin):
         blank=True
     )
     dob = models.DateField(null=True, blank=True)
-    photo = models.ImageField(upload_to='users/', null=True, blank=True)
-
+    avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
     status = models.BooleanField(default=True)
 
+    is_verified = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
 
@@ -57,8 +57,6 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
-
-
 
 class Category(models.Model):
     parent = models.ForeignKey(

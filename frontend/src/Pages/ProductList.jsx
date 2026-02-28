@@ -1,60 +1,135 @@
-import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import api from "../api/axios";
 
 const ProductList = () => {
-  // Sample product data
-  const allProducts = [
-    { id: 1, name: "Fresh Tomatoes", price: 2.99, oldPrice: 3.99, image: "https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=400&h=400&fit=crop", category: "Vegetables", rating: 4.5, inStock: true, discount: 25, weight: "1kg" },
-    { id: 2, name: "Organic Carrots", price: 1.99, oldPrice: 2.49, image: "https://images.unsplash.com/photo-1598170845058-32b9d6a5da37?w=400&h=400&fit=crop", category: "Vegetables", rating: 4.8, inStock: true, discount: 20, weight: "500g" },
-    { id: 3, name: "Red Apples", price: 4.99, oldPrice: 5.99, image: "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400&h=400&fit=crop", category: "Fruits", rating: 4.7, inStock: true, discount: 15, weight: "1kg" },
-    { id: 4, name: "Fresh Broccoli", price: 2.49, oldPrice: 2.99, image: "https://images.unsplash.com/photo-1459411621453-7b03977f4bfc?w=400&h=400&fit=crop", category: "Vegetables", rating: 4.6, inStock: true, discount: 10, weight: "500g" },
-    { id: 5, name: "Avocado", price: 1.99, oldPrice: null, image: "https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?w=400&h=400&fit=crop", category: "Fruits", rating: 4.9, inStock: true, discount: 0, weight: "each" },
-    { id: 6, name: "Spinach", price: 2.29, oldPrice: 2.79, image: "https://images.unsplash.com/photo-1576045057995-568f588f82fb?w=400&h=400&fit=crop", category: "Vegetables", rating: 4.4, inStock: true, discount: 0, weight: "bunch" },
-    { id: 7, name: "Strawberries", price: 5.99, oldPrice: 6.99, image: "https://images.unsplash.com/photo-1464965911861-746a04b4bca6?w=400&h=400&fit=crop", category: "Fruits", rating: 4.8, inStock: false, discount: 0, weight: "500g" },
-    { id: 8, name: "Bell Peppers", price: 3.49, oldPrice: null, image: "https://images.unsplash.com/photo-1563565375-f3fdf5c69b37?w=400&h=400&fit=crop", category: "Vegetables", rating: 4.5, inStock: true, discount: 0, weight: "3pcs" },
-    { id: 9, name: "Bananas", price: 1.49, oldPrice: 1.99, image: "https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?w=400&h=400&fit=crop", category: "Fruits", rating: 4.6, inStock: true, discount: 25, weight: "1kg" },
-    { id: 10, name: "Cucumber", price: 0.99, oldPrice: null, image: "https://images.unsplash.com/photo-1449300079323-02e209d9d3a6?w=400&h=400&fit=crop", category: "Vegetables", rating: 4.3, inStock: true, discount: 0, weight: "each" },
-    { id: 11, name: "Oranges", price: 3.99, oldPrice: 4.49, image: "https://images.unsplash.com/photo-1547514701-42782101795e?w=400&h=400&fit=crop", category: "Fruits", rating: 4.7, inStock: true, discount: 10, weight: "1kg" },
-    { id: 12, name: "Potatoes", price: 2.99, oldPrice: null, image: "https://images.unsplash.com/photo-1518977676601-b53f82a6b696?w=400&h=400&fit=crop", category: "Vegetables", rating: 4.4, inStock: true, discount: 0, weight: "2kg" },
-  ];
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  // Get initial values from URL params
+  const initialCategory = searchParams.get('category') || "All";
+  const initialSearch = searchParams.get('search') || "";
+  const initialMinPrice = searchParams.get('min_price') || "";
+  const initialMaxPrice = searchParams.get('max_price') || "";
+  const initialPage = parseInt(searchParams.get('page')) || 1;
+  const initialSort = searchParams.get('sort') || "featured";
 
-  const categories = ["All", "Vegetables", "Fruits", "Organic", "Fresh Juice"];
-  const priceRanges = [
-    { label: "All Price", min: 0, max: Infinity },
-    { label: "Under $2", min: 0, max: 2 },
-    { label: "$2 - $5", min: 2, max: 5 },
-    { label: "$5 - $10", min: 5, max: 10 },
-    { label: "Over $10", min: 10, max: Infinity },
-  ];
-
-  const [selectedCategory, setSelectedCategory] = useState("All");
-  const [selectedPrice, setSelectedPrice] = useState(priceRanges[0]);
-  const [sortBy, setSortBy] = useState("featured");
+  // State
+  const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  
+  // Filter states
+  const [selectedCategory, setSelectedCategory] = useState(initialCategory);
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
+  const [minPrice, setMinPrice] = useState(initialMinPrice);
+  const [maxPrice, setMaxPrice] = useState(initialMaxPrice);
+  const [sortBy, setSortBy] = useState(initialSort);
   const [viewMode, setViewMode] = useState("grid");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(initialPage);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
-  const productsPerPage = 8;
+  const [totalProducts, setTotalProducts] = useState(0);
+  
+  const productsPerPage = 12;
 
-  // Filter and sort products
-  const filteredProducts = allProducts.filter((product) => {
-    const matchesCategory = selectedCategory === "All" || product.category === selectedCategory;
-    const matchesPrice = product.price >= selectedPrice.min && product.price <= selectedPrice.max;
-    const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesPrice && matchesSearch;
-  }).sort((a, b) => {
-    if (sortBy === "price-low") return a.price - b.price;
-    if (sortBy === "price-high") return b.price - a.price;
-    if (sortBy === "rating") return b.rating - a.rating;
-    return 0;
-  });
+  // Price ranges for quick select
+  const priceRanges = [
+    { label: "All Price", min: "", max: "" },
+    { label: "Under $2", min: "0", max: "2" },
+    { label: "$2 - $5", min: "2", max: "5" },
+    { label: "$5 - $10", min: "5", max: "10" },
+    { label: "Over $10", min: "10", max: "" },
+  ];
 
-  // Pagination logic
-  const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
-  const currentProducts = filteredProducts.slice(
-    (currentPage - 1) * productsPerPage,
-    currentPage * productsPerPage
-  );
+  // Fetch categories on mount
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const res = await api.get('/categories/');
+        setCategories(res.data);
+      } catch (err) {
+        console.error('Error fetching categories:', err);
+      }
+    };
+    fetchCategories();
+  }, []);
+
+  // Fetch products when filters change
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        setLoading(true);
+        
+        // Build query params
+        const params = new URLSearchParams();
+        params.set('page', currentPage);
+        params.set('page_size', productsPerPage);
+        
+        if (selectedCategory !== "All") {
+          params.set('category', selectedCategory);
+        }
+        if (searchQuery) {
+          params.set('search', searchQuery);
+        }
+        if (minPrice) {
+          params.set('min_price', minPrice);
+        }
+        if (maxPrice) {
+          params.set('max_price', maxPrice);
+        }
+        
+        // Handle sorting
+        switch (sortBy) {
+          case 'price-low':
+            params.set('ordering', 'price');
+            break;
+          case 'price-high':
+            params.set('ordering', '-price');
+            break;
+          case 'rating':
+            params.set('ordering', '-rating');
+            break;
+          case 'newest':
+            params.set('ordering', '-created_at');
+            break;
+          default:
+            params.set('ordering', '-created_at');
+        }
+        
+        const res = await api.get(`/products/?${params.toString()}`);
+        setProducts(res.data.results || res.data);
+        setTotalProducts(res.data.count || res.data.length);
+        setLoading(false);
+      } catch (err) {
+        console.error('Error fetching products:', err);
+        setError('Failed to load products. Please try again later.');
+        setLoading(false);
+      }
+    };
+
+    fetchProducts();
+    
+    // Update URL params
+    const newParams = new URLSearchParams();
+    if (selectedCategory !== "All") newParams.set('category', selectedCategory);
+    if (searchQuery) newParams.set('search', searchQuery);
+    if (minPrice) newParams.set('min_price', minPrice);
+    if (maxPrice) newParams.set('max_price', maxPrice);
+    if (sortBy !== "featured") newParams.set('sort', sortBy);
+    if (currentPage > 1) newParams.set('page', currentPage);
+    setSearchParams(newParams);
+    
+  }, [selectedCategory, searchQuery, minPrice, maxPrice, sortBy, currentPage]);
+
+  // Helper function to get image URL
+  const getImageUrl = (imagePath) => {
+    if (!imagePath) return 'https://via.placeholder.com/400x400?text=No+Image';
+    if (imagePath.startsWith('http')) return imagePath;
+    return `http://127.0.0.1:8000${imagePath}`;
+  };
+
+  // Calculate total pages
+  const totalPages = Math.ceil(totalProducts / productsPerPage);
 
   const getPageNumbers = () => {
     const pages = [];
@@ -84,15 +159,31 @@ const ProductList = () => {
 
   // Render stars
   const renderStars = (rating) => {
-    return [...Array(5)].map((_, i) => (
-      <i key={i} className={`bi ${i < Math.floor(rating) ? "bi-star-fill" : i < rating ? "bi-star-half" : "bi-star"} text-warning`}></i>
-    ));
+    const stars = [];
+    for (let i = 1; i <= 5; i++) {
+      if (i <= Math.floor(rating || 0)) {
+        stars.push(<i key={i} className="bi bi-star-fill text-warning"></i>);
+      } else if (i - 0.5 <= (rating || 0)) {
+        stars.push(<i key={i} className="bi bi-star-half text-warning"></i>);
+      } else {
+        stars.push(<i key={i} className="bi bi-star text-warning"></i>);
+      }
+    }
+    return stars;
   };
 
   const clearFilters = () => {
     setSelectedCategory("All");
-    setSelectedPrice(priceRanges[0]);
     setSearchQuery("");
+    setMinPrice("");
+    setMaxPrice("");
+    setSortBy("featured");
+    setCurrentPage(1);
+  };
+
+  const handlePriceRangeSelect = (range) => {
+    setMinPrice(range.min);
+    setMaxPrice(range.max);
     setCurrentPage(1);
   };
 
@@ -117,7 +208,10 @@ const ProductList = () => {
             className="form-control border-start-0"
             placeholder="Search products..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(1);
+            }}
           />
         </div>
       </div>
@@ -126,15 +220,30 @@ const ProductList = () => {
       <div className="mb-4">
         <label className="form-label fw-bold small text-muted">CATEGORIES</label>
         <div className="d-flex flex-column gap-2">
+          <button
+            className={`btn btn-sm text-start d-flex justify-content-between align-items-center ${selectedCategory === "All" ? "btn-success" : "btn-outline-secondary border-0"}`}
+            onClick={() => {
+              setSelectedCategory("All");
+              setCurrentPage(1);
+            }}
+          >
+            <span>All</span>
+            <span className={`badge ${selectedCategory === "All" ? "bg-white text-success" : "bg-secondary bg-opacity-25 text-secondary"}`}>
+              All
+            </span>
+          </button>
           {categories.map((cat) => (
             <button
-              key={cat}
-              className={`btn btn-sm text-start d-flex justify-content-between align-items-center ${selectedCategory === cat ? "btn-success" : "btn-outline-secondary border-0"}`}
-              onClick={() => setSelectedCategory(cat)}
+              key={cat.id}
+              className={`btn btn-sm text-start d-flex justify-content-between align-items-center ${selectedCategory === cat.id.toString() ? "btn-success" : "btn-outline-secondary border-0"}`}
+              onClick={() => {
+                setSelectedCategory(cat.id.toString());
+                setCurrentPage(1);
+              }}
             >
-              <span>{cat}</span>
-              <span className={`badge ${selectedCategory === cat ? "bg-white text-success" : "bg-secondary bg-opacity-25 text-secondary"}`}>
-                {cat === "All" ? allProducts.length : allProducts.filter(p => p.category === cat).length}
+              <span>{cat.category_name}</span>
+              <span className={`badge ${selectedCategory === cat.id.toString() ? "bg-white text-success" : "bg-secondary bg-opacity-25 text-secondary"}`}>
+                {cat.subcategories?.length || 0}
               </span>
             </button>
           ))}
@@ -148,41 +257,73 @@ const ProductList = () => {
           {priceRanges.map((range, idx) => (
             <button
               key={idx}
-              className={`btn btn-sm text-start ${selectedPrice.label === range.label ? "btn-success" : "btn-outline-secondary border-0"}`}
-              onClick={() => setSelectedPrice(range)}
+              className={`btn btn-sm text-start ${
+                minPrice === range.min && maxPrice === range.max 
+                  ? "btn-success" 
+                  : "btn-outline-secondary border-0"
+              }`}
+              onClick={() => handlePriceRangeSelect(range)}
             >
               {range.label}
             </button>
           ))}
         </div>
+        
+        {/* Custom Price Input */}
+        <div className="row g-2 mt-2">
+          <div className="col-6">
+            <input
+              type="number"
+              className="form-control form-control-sm"
+              placeholder="Min"
+              value={minPrice}
+              onChange={(e) => {
+                setMinPrice(e.target.value);
+                setCurrentPage(1);
+              }}
+            />
+          </div>
+          <div className="col-6">
+            <input
+              type="number"
+              className="form-control form-control-sm"
+              placeholder="Max"
+              value={maxPrice}
+              onChange={(e) => {
+                setMaxPrice(e.target.value);
+                setCurrentPage(1);
+              }}
+            />
+          </div>
+        </div>
       </div>
 
-      {/* Availability */}
-      <div className="mb-4">
-        <label className="form-label fw-bold small text-muted">AVAILABILITY</label>
-        <div className="form-check mb-2">
-          <input className="form-check-input" type="checkbox" id="inStock" defaultChecked />
-          <label className="form-check-label" htmlFor="inStock">
-            In Stock
-          </label>
-        </div>
-        <div className="form-check">
-          <input className="form-check-input" type="checkbox" id="onSale" />
-          <label className="form-check-label" htmlFor="onSale">
-            On Sale
-          </label>
-        </div>
-      </div>
-
-      {/* Promo Banner */}
-      <div className="bg-success bg-opacity-10 rounded-3 p-4 text-center mt-4">
-        <i className="bi bi-gift text-success fs-1 mb-2 d-block"></i>
-        <h6 className="fw-bold mb-1">Special Offer!</h6>
-        <p className="small text-muted mb-3">Get 20% off on your first order</p>
-        <button className="btn btn-success w-100 rounded-pill">Shop Now</button>
-      </div>
     </>
   );
+
+  if (loading && products.length === 0) {
+    return (
+      <div className="d-flex justify-content-center align-items-center vh-100">
+        <div className="spinner-border text-success" role="status">
+          <span className="visually-hidden">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="container py-5 text-center">
+        <div className="alert alert-danger" role="alert">
+          <i className="bi bi-exclamation-triangle-fill me-2"></i>
+          {error}
+        </div>
+        <button className="btn btn-success" onClick={() => window.location.reload()}>
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -200,7 +341,7 @@ const ProductList = () => {
               </nav>
             </div>
             <div className="col-md-6 text-md-end mt-3 mt-md-0">
-              <span className="text-muted">Showing <strong>{filteredProducts.length}</strong> products</span>
+              <span className="text-muted">Showing <strong>{products.length}</strong> of <strong>{totalProducts}</strong> products</span>
             </div>
           </div>
         </div>
@@ -255,6 +396,7 @@ const ProductList = () => {
                     <option value="price-low">Price: Low to High</option>
                     <option value="price-high">Price: High to Low</option>
                     <option value="rating">Highest Rated</option>
+                    <option value="newest">Newest First</option>
                   </select>
                 </div>
                 
@@ -278,7 +420,7 @@ const ProductList = () => {
             </div>
 
             {/* Products */}
-            {currentProducts.length === 0 ? (
+            {products.length === 0 ? (
               <div className="text-center py-5">
                 <i className="bi bi-search display-1 text-muted mb-3"></i>
                 <h4>No products found</h4>
@@ -287,13 +429,13 @@ const ProductList = () => {
               </div>
             ) : (
               <div className={viewMode === "grid" ? "row g-4" : "d-flex flex-column gap-3"}>
-                {currentProducts.map((product) => (
+                {products.map((product) => (
                   <div key={product.id} className={viewMode === "grid" ? "col-6 col-md-4" : "col-12"}>
                     <div className={`card border-0 shadow-sm h-100 product-card ${viewMode === "list" ? "flex-row align-items-center" : ""}`}>
                       <div className={`position-relative overflow-hidden ${viewMode === "list" ? "col-md-3" : ""}`}>
                         <img 
-                          src={product.image} 
-                          alt={product.name} 
+                          src={getImageUrl(product.photo)} 
+                          alt={product.product_name} 
                           className={viewMode === "list" ? "img-fluid rounded-start" : "card-img-top"} 
                           style={{ 
                             height: viewMode === "list" ? "180px" : "220px", 
@@ -301,12 +443,13 @@ const ProductList = () => {
                             width: "100%"
                           }}
                         />
-                        {product.discount > 0 && (
+                        {/* Discount badge - calculate if needed */}
+                        {product.old_price && parseFloat(product.old_price) > parseFloat(product.price) && (
                           <span className="position-absolute top-0 start-0 bg-danger text-white px-2 py-1 m-2 rounded-pill small fw-bold">
-                            -{product.discount}%
+                            -{Math.round((1 - product.price/product.old_price) * 100)}%
                           </span>
                         )}
-                        {!product.inStock && (
+                        {product.quantity === 0 && (
                           <span className="position-absolute top-0 end-0 bg-secondary text-white px-2 py-1 m-2 rounded-pill small">
                             Out of Stock
                           </span>
@@ -315,10 +458,18 @@ const ProductList = () => {
                           <button className="btn btn-light rounded-circle shadow-sm" style={{ width: "38px", height: "38px" }}>
                             <i className="bi bi-heart"></i>
                           </button>
-                          <button className="btn btn-success rounded-circle shadow-sm" style={{ width: "38px", height: "38px" }} disabled={!product.inStock}>
+                          <button 
+                            className="btn btn-success rounded-circle shadow-sm" 
+                            style={{ width: "38px", height: "38px" }} 
+                            disabled={product.quantity === 0}
+                          >
                             <i className="bi bi-cart-plus"></i>
                           </button>
-                          <Link to={`/product/${product.id}`} className="btn btn-light rounded-circle shadow-sm" style={{ width: "38px", height: "38px" }}>
+                          <Link 
+                            to={`/product/${product.product_url}`} 
+                            className="btn btn-light rounded-circle shadow-sm" 
+                            style={{ width: "38px", height: "38px" }}
+                          >
                             <i className="bi bi-eye"></i>
                           </Link>
                         </div>
@@ -326,34 +477,42 @@ const ProductList = () => {
                       
                       <div className={`card-body ${viewMode === "list" ? "col-md-9" : ""}`}>
                         <div className="d-flex justify-content-between align-items-start mb-2">
-                          <span className="badge bg-success bg-opacity-10 text-success small">{product.category}</span>
-                          <small className="text-muted">{product.weight}</small>
+                          <span className="badge bg-success bg-opacity-10 text-success small">
+                            {product.category_name}
+                          </span>
+                          <small className="text-muted">{product.minimum}-{product.maximum} pcs</small>
                         </div>
                         
-                        <h5 className="card-title fw-bold mb-2">{product.name}</h5>
+                        <h5 className="card-title fw-bold mb-2">{product.product_name}</h5>
                         
                         <div className="mb-2">
-                          {renderStars(product.rating)}
-                          <small className="text-muted ms-1">({product.rating})</small>
+                          {renderStars(product.rating || 4.5)}
+                          <small className="text-muted ms-1">({product.rating || 4.5})</small>
                         </div>
                         
                         <div className="d-flex justify-content-between align-items-center">
                           <div>
                             <span className="text-success fw-bold fs-5">${product.price}</span>
-                            {product.oldPrice && (
-                              <span className="text-muted text-decoration-line-through ms-2 small">${product.oldPrice}</span>
+                            {product.old_price && (
+                              <span className="text-muted text-decoration-line-through ms-2 small">${product.old_price}</span>
                             )}
                           </div>
                           {viewMode === "list" && (
-                            <button className={`btn ${product.inStock ? "btn-success" : "btn-secondary"} rounded-pill px-4`} disabled={!product.inStock}>
-                              {product.inStock ? "Add to Cart" : "Out of Stock"}
+                            <button 
+                              className={`btn ${product.quantity > 0 ? "btn-success" : "btn-secondary"} rounded-pill px-4`} 
+                              disabled={product.quantity === 0}
+                            >
+                              {product.quantity > 0 ? "Add to Cart" : "Out of Stock"}
                             </button>
                           )}
                         </div>
                         
                         {viewMode === "grid" && (
-                          <button className={`btn ${product.inStock ? "btn-success" : "btn-secondary"} w-100 rounded-pill mt-3`} disabled={!product.inStock}>
-                            {product.inStock ? "Add to Cart" : "Out of Stock"}
+                          <button 
+                            className={`btn ${product.quantity > 0 ? "btn-success" : "btn-secondary"} w-100 rounded-pill mt-3`} 
+                            disabled={product.quantity === 0}
+                          >
+                            {product.quantity > 0 ? "Add to Cart" : "Out of Stock"}
                           </button>
                         )}
                       </div>
@@ -363,7 +522,7 @@ const ProductList = () => {
               </div>
             )}
 
-            {/* Improved Pagination */}
+            {/* Pagination */}
             {totalPages > 1 && (
               <nav className="mt-5">
                 <ul className="pagination justify-content-center align-items-center">
@@ -441,8 +600,15 @@ const ProductList = () => {
           color: #6c757d;
           background-color: transparent;
         }
+        
+        /* FIXED: Lower z-index for sticky sidebar so it stays below header */
         .sticky-top {
           z-index: 1020;
+        }
+        
+        /* Ensure header has higher z-index - add this if needed in your Header component */
+        .navbar {
+          z-index: 1030 !important;
         }
       `}</style>
     </div>

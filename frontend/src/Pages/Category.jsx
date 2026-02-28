@@ -27,7 +27,7 @@ const Category = () => {
         
         // Get all categories first
         const categoriesRes = await api.get('/categories/');
-        const allCategories = categoriesRes.data;
+        const allCategories = categoriesRes.data.results || categoriesRes.data;
         setCategories(allCategories);
         
         // Determine which category to show
@@ -36,11 +36,17 @@ const Category = () => {
         if (categoryId) {
           // Find category by ID from URL param
           targetCategory = allCategories.find(cat => cat.id === parseInt(categoryId));
+          
+          // If not found in main categories, check subcategories
+          if (!targetCategory) {
+            allCategories.forEach(cat => {
+              const sub = cat.subcategories?.find(s => s.id === parseInt(categoryId));
+              if (sub) targetCategory = sub;
+            });
+          }
         } else if (urlCategory) {
-          // Find category by name from query param
-          targetCategory = allCategories.find(cat => 
-            cat.category_name.toLowerCase() === urlCategory.toLowerCase()
-          );
+          // Find category by ID from query param
+          targetCategory = allCategories.find(cat => cat.id === parseInt(urlCategory));
         }
         
         if (targetCategory) {
@@ -49,7 +55,7 @@ const Category = () => {
           
           // Fetch products for this category
           const productsRes = await api.get(`/products/?category=${targetCategory.id}`);
-          setProducts(productsRes.data);
+          setProducts(productsRes.data.results || productsRes.data);
         } else {
           // No specific category - show all products
           setCurrentCategory(null);
@@ -57,7 +63,7 @@ const Category = () => {
           
           // Fetch all products
           const productsRes = await api.get('/products/');
-          setProducts(productsRes.data);
+          setProducts(productsRes.data.results || productsRes.data);
         }
         
         setLoading(false);
@@ -71,11 +77,14 @@ const Category = () => {
     fetchData();
   }, [categoryId, urlCategory]);
 
-  // Helper function to get image URL
+  // Helper function to get image URL - FIXED: removed spaces
   const getImageUrl = (imagePath) => {
     if (!imagePath) return 'https://via.placeholder.com/400x300?text=No+Image';
     if (imagePath.startsWith('http')) return imagePath;
-    return `http://127.0.0.1:8000${imagePath}`;
+    // Remove trailing slash from base URL if imagePath starts with /
+    const baseUrl = 'http://127.0.0.1:8000';
+    const path = imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
+    return `${baseUrl}${path}`;
   };
 
   // Sort products
@@ -145,6 +154,9 @@ const Category = () => {
 
   return (
     <div>
+      {/* ADD BOOTSTRAP ICONS CSS */}
+      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" />
+
       {/* Category Banner - Show if specific category selected */}
       {currentCategory ? (
         <section className="position-relative">
@@ -256,9 +268,16 @@ const Category = () => {
       <section className="py-5">
         <div className="container">
           <div className="row g-4">
-            {/* Sidebar Filters */}
+            {/* Sidebar Filters - FIXED z-index */}
             <div className="col-lg-3">
-              <div className="card border-0 shadow-sm rounded-4 sticky-top" style={{ top: "20px" }}>
+              <div 
+                className="card border-0 shadow-sm rounded-4" 
+                style={{ 
+                  position: "sticky", 
+                  top: "100px",
+                  zIndex: 1 // Lower than header
+                }}
+              >
                 <div className="card-body p-4">
                   <h5 className="fw-bold mb-4">
                     <i className="bi bi-funnel text-success me-2"></i>
@@ -274,8 +293,13 @@ const Category = () => {
                           <Link 
                             key={cat.id} 
                             to={`/category/${cat.id}`}
-                            className="text-decoration-none text-dark d-flex justify-content-between align-items-center p-2 rounded hover-bg-light"
-                            style={{ background: cat.id === parseInt(categoryId) ? '#e8f5e9' : 'transparent' }}
+                            className="text-decoration-none text-dark d-flex justify-content-between align-items-center p-2 rounded"
+                            style={{ 
+                              background: cat.id === parseInt(categoryId) ? '#e8f5e9' : 'transparent',
+                              transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={(e) => e.target.style.background = '#f8f9fa'}
+                            onMouseLeave={(e) => e.target.style.background = cat.id === parseInt(categoryId) ? '#e8f5e9' : 'transparent'}
                           >
                             <span>{cat.category_name}</span>
                             <span className="badge bg-success bg-opacity-10 text-success">
@@ -311,7 +335,7 @@ const Category = () => {
                       type="range" 
                       className="form-range" 
                       min="0" 
-                      max={maxPrice} 
+                      max={maxPrice || 1000} 
                       value={priceRange[1]}
                       onChange={(e) => setPriceRange([0, parseInt(e.target.value)])}
                     />
@@ -323,7 +347,7 @@ const Category = () => {
 
                   <button 
                     className="btn btn-success w-100 rounded-pill"
-                    onClick={() => setPriceRange([0, maxPrice])}
+                    onClick={() => setPriceRange([0, maxPrice || 1000])}
                   >
                     Reset Filters
                   </button>
@@ -348,7 +372,7 @@ const Category = () => {
               {/* No Products Message */}
               {filteredProducts.length === 0 ? (
                 <div className="text-center py-5">
-                  <i className="bi bi-inbox fs-1 text-muted mb-3"></i>
+                  <i className="bi bi-inbox fs-1 text-muted mb-3 d-block"></i>
                   <h5>No products found</h5>
                   <p className="text-muted">Try adjusting your filters or browse other categories</p>
                   <Link to="/category" className="btn btn-success">View All Products</Link>
@@ -360,14 +384,14 @@ const Category = () => {
                     {filteredProducts.map((product) => (
                       <div key={product.id} className={viewMode === "grid" ? "col-6 col-md-4" : "col-12"}>
                         <div className={`card border-0 shadow-sm rounded-4 overflow-hidden product-card ${viewMode === "list" ? "flex-row" : ""}`}>
-                          <div className={`position-relative ${viewMode === "list" ? "col-md-4" : ""}`}>
+                          <div className={`position-relative overflow-hidden ${viewMode === "list" ? "col-md-4" : ""}`}>
                             <img 
                               src={getImageUrl(product.photo)} 
                               alt={product.product_name} 
                               className={viewMode === "list" ? "img-fluid h-100" : "card-img-top"} 
                               style={{ height: viewMode === "list" ? "200px" : "250px", objectFit: "cover" }}
                             />
-                            <div className="product-actions position-absolute top-50 start-50 translate-middle d-flex gap-2 opacity-0">
+                            <div className="product-actions position-absolute top-50 start-50 translate-middle d-flex gap-2">
                               <button className="btn btn-light rounded-circle shadow-sm" style={{ width: "40px", height: "40px" }}>
                                 <i className="bi bi-heart"></i>
                               </button>
@@ -405,27 +429,6 @@ const Category = () => {
                       </div>
                     ))}
                   </div>
-
-                  {/* Pagination */}
-                  {filteredProducts.length > 12 && (
-                    <nav className="mt-5">
-                      <ul className="pagination justify-content-center">
-                        <li className="page-item disabled">
-                          <button className="page-link rounded-start-pill">
-                            <i className="bi bi-chevron-left"></i>
-                          </button>
-                        </li>
-                        <li className="page-item active"><button className="page-link">1</button></li>
-                        <li className="page-item"><button className="page-link">2</button></li>
-                        <li className="page-item"><button className="page-link">3</button></li>
-                        <li className="page-item">
-                          <button className="page-link rounded-end-pill">
-                            <i className="bi bi-chevron-right"></i>
-                          </button>
-                        </li>
-                      </ul>
-                    </nav>
-                  )}
                 </>
               )}
             </div>
@@ -433,30 +436,27 @@ const Category = () => {
         </div>
       </section>
 
+      {/* Custom Styles */}
       <style>{`
-        .product-card:hover .product-actions {
-          opacity: 1 !important;
+        .product-card {
           transition: all 0.3s ease;
         }
         .product-card:hover {
           transform: translateY(-5px);
+          box-shadow: 0 10px 30px rgba(0,0,0,0.1) !important;
+        }
+        .product-card .product-actions {
+          opacity: 0;
           transition: all 0.3s ease;
+        }
+        .product-card:hover .product-actions {
+          opacity: 1;
         }
         .product-card img {
           transition: all 0.5s ease;
         }
         .product-card:hover img {
           transform: scale(1.05);
-        }
-        .page-item.active .page-link {
-          background-color: #198754;
-          border-color: #198754;
-        }
-        .page-link {
-          color: #198754;
-        }
-        .hover-bg-light:hover {
-          background-color: #f8f9fa !important;
         }
       `}</style>
     </div>

@@ -1,11 +1,9 @@
-from rest_framework import generics, permissions, status
+from rest_framework import generics, permissions, status, pagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model
-from social_django.utils import load_strategy, load_backend
-from social_core.exceptions import MissingBackend, AuthTokenError, AuthForbidden
 import requests
 from .models import Category, Product
 
@@ -15,6 +13,7 @@ from .serializers import (
 )
 
 User = get_user_model()
+
 
 class RegisterAPI(generics.CreateAPIView):
     queryset = User.objects.all()
@@ -34,6 +33,7 @@ class RegisterAPI(generics.CreateAPIView):
             'access': str(refresh.access_token),
         }, status=status.HTTP_201_CREATED)
 
+
 class CustomTokenObtainPairView(TokenObtainPairView):
     permission_classes = (permissions.AllowAny,)
     
@@ -50,12 +50,14 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             'access': str(refresh.access_token),
         })
 
+
 class UserProfileAPI(generics.RetrieveUpdateAPIView):
     serializer_class = UserProfileSerializer
     permission_classes = (permissions.IsAuthenticated,)
     
     def get_object(self):
         return self.request.user
+
 
 class CheckUserExistsAPI(APIView):
     permission_classes = (permissions.AllowAny,)
@@ -69,15 +71,17 @@ class CheckUserExistsAPI(APIView):
         if email:
             exists = User.objects.filter(email=email).exists()
             response_data['email_exists'] = exists
-            response_data['exists'] = exists
             
         if mobile:
             exists = User.objects.filter(mobile=mobile).exists()
             response_data['mobile_exists'] = exists
-            response_data['exists'] = exists
+        
+        # Overall exists flag
+        response_data['exists'] = response_data.get('email_exists', False) or response_data.get('mobile_exists', False)
             
         return Response(response_data)
-    
+
+
 class SocialLoginAPI(APIView):
     permission_classes = (permissions.AllowAny,)
     serializer_class = SocialAuthSerializer
@@ -97,13 +101,11 @@ class SocialLoginAPI(APIView):
             else:
                 return Response({'error': 'Invalid provider'}, status=status.HTTP_400_BAD_REQUEST)
             
-            # Get or create user
+            # Get or create user - FIXED: use 'name' instead of 'username'
             user, created = User.objects.get_or_create(
                 email=user_data['email'],
                 defaults={
-                    'username': user_data.get('email').split('@')[0],
-                    'first_name': user_data.get('first_name', ''),
-                    'last_name': user_data.get('last_name', ''),
+                    'name': f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip() or user_data['email'].split('@')[0],
                     'is_verified': True
                 }
             )
@@ -147,26 +149,38 @@ class SocialLoginAPI(APIView):
             raise Exception('Failed to get user info from Facebook')
         
         data = response.json()
-        name_parts = data.get('name', '').split(' ', 1)
         return {
             'email': data['email'],
-            'first_name': data.get('first_name', name_parts[0]),
-            'last_name': data.get('last_name', name_parts[1] if len(name_parts) > 1 else ''),
+            'first_name': data.get('first_name', ''),
+            'last_name': data.get('last_name', ''),
         }
+
 
 class LogoutAPI(APIView):
     permission_classes = (permissions.IsAuthenticated,)
     
     def post(self, request):
         try:
-            refresh_token = request.data["refresh_token"]
+            refresh_token = request.data.get("refresh_token")
+            if not refresh_token:
+                return Response({'error': 'Refresh token is required'}, status=status.HTTP_400_BAD_REQUEST)
+            
             token = RefreshToken(refresh_token)
             token.blacklist()
-            return Response(status=status.HTTP_205_RESET_CONTENT)
+            return Response({'message': 'Successfully logged out'}, status=status.HTTP_205_RESET_CONTENT)
         except Exception as e:
-            return Response(status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+# ==================== PAGINATION CLASS ====================
+
+class StandardResultsSetPagination(pagination.PageNumberPagination):
+    page_size = 12
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
+# ==================== CATEGORY APIs ====================
 
 class CategoryListAPI(generics.ListAPIView):
     serializer_class = CategorySerializer
@@ -174,38 +188,7 @@ class CategoryListAPI(generics.ListAPIView):
     
     def get_queryset(self):
         # Only return main categories (where parent is NULL)
-        # This will include their subcategories via the serializer
         return Category.objects.filter(status=True, parent__isnull=True)
-
-
-class SubCategoryListAPI(generics.ListAPIView):
-    """Optional: API to get subcategories of a specific parent"""
-    serializer_class = CategorySerializer
-    permission_classes = (permissions.AllowAny,)
-    
-    def get_queryset(self):
-        parent_id = self.kwargs.get('parent_id')
-        return Category.objects.filter(status=True, parent_id=parent_id)
-
-
-class ProductListAPI(generics.ListAPIView):
-    serializer_class = ProductSerializer
-    permission_classes = (permissions.AllowAny,)
-    
-    def get_queryset(self):
-        queryset = Product.objects.filter(status=True)
-        
-        # Filter by category
-        category = self.request.query_params.get('category', None)
-        if category:
-            queryset = queryset.filter(category__id=category)
-        
-        # Filter by sub_category
-        sub_category = self.request.query_params.get('sub_category', None)
-        if sub_category:
-            queryset = queryset.filter(sub_category__id=sub_category)
-            
-        return queryset.select_related('category', 'sub_category')
 
 
 class CategoryDetailAPI(generics.RetrieveAPIView):
@@ -214,10 +197,65 @@ class CategoryDetailAPI(generics.RetrieveAPIView):
     permission_classes = (permissions.AllowAny,)
     queryset = Category.objects.filter(status=True)
     lookup_field = 'id'
+
+
+class SubCategoryListAPI(generics.ListAPIView):
+    """Get subcategories of a specific parent"""
+    serializer_class = CategorySerializer
+    permission_classes = (permissions.AllowAny,)
     
+    def get_queryset(self):
+        parent_id = self.kwargs.get('parent_id')
+        return Category.objects.filter(status=True, parent_id=parent_id)
+
+
+# ==================== PRODUCT APIs ====================
+
+class ProductListAPI(generics.ListAPIView):
+    serializer_class = ProductSerializer
+    permission_classes = (permissions.AllowAny,)
+    pagination_class = StandardResultsSetPagination
+    
+    def get_queryset(self):
+        queryset = Product.objects.filter(status=True)
+        
+        # Filter by category ID
+        category = self.request.query_params.get('category', None)
+        if category:
+            queryset = queryset.filter(category__id=category)
+        
+        # Filter by sub_category ID
+        sub_category = self.request.query_params.get('sub_category', None)
+        if sub_category:
+            queryset = queryset.filter(sub_category__id=sub_category)
+        
+        # Search by name or description
+        search = self.request.query_params.get('search', None)
+        if search:
+            from django.db.models import Q
+            queryset = queryset.filter(
+                Q(product_name__icontains=search) |
+                Q(description__icontains=search)
+            )
+        
+        # Price range filter
+        min_price = self.request.query_params.get('min_price', None)
+        max_price = self.request.query_params.get('max_price', None)
+        if min_price:
+            queryset = queryset.filter(price__gte=min_price)
+        if max_price:
+            queryset = queryset.filter(price__lte=max_price)
+        
+        # Ordering
+        ordering = self.request.query_params.get('ordering', '-created_at')
+        if ordering:
+            queryset = queryset.order_by(ordering)
+        
+        return queryset.select_related('category', 'sub_category')
+
+
 class ProductDetailAPI(generics.RetrieveAPIView):
     queryset = Product.objects.filter(status=True)
     serializer_class = ProductSerializer
     lookup_field = 'product_url'
     permission_classes = (permissions.AllowAny,)
-    

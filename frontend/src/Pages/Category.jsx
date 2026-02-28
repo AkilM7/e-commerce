@@ -1,71 +1,210 @@
-import React, { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import api from "../api/axios";
 
 const Category = () => {
-  const { categoryName } = useParams();
+  const { categoryId } = useParams();
+  const [searchParams] = useSearchParams();
+  const urlCategory = searchParams.get('category');
+  
   const [sortBy, setSortBy] = useState("featured");
   const [viewMode, setViewMode] = useState("grid");
-  const [priceRange, setPriceRange] = useState([0, 100]);
+  const [priceRange, setPriceRange] = useState([0, 1000]);
+  
+  // API data states
+  const [categories, setCategories] = useState([]);
+  const [currentCategory, setCurrentCategory] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [subcategories, setSubcategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Sample category data
-  const categoryData = {
-    name: categoryName || "Vegetables",
-    description: "Fresh, organic vegetables sourced directly from local farms. Perfect for healthy cooking and nutritious meals.",
-    banner: "https://images.unsplash.com/photo-1542838132-92c53300491e?w=1200&h=400&fit=crop",
-    productCount: 48,
-    subcategories: ["Leafy Greens", "Root Vegetables", "Peppers", "Tomatoes", "Onions & Garlic"]
+  // Fetch data based on category ID or show all
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        
+        // Get all categories first
+        const categoriesRes = await api.get('/categories/');
+        const allCategories = categoriesRes.data;
+        setCategories(allCategories);
+        
+        // Determine which category to show
+        let targetCategory = null;
+        
+        if (categoryId) {
+          // Find category by ID from URL param
+          targetCategory = allCategories.find(cat => cat.id === parseInt(categoryId));
+        } else if (urlCategory) {
+          // Find category by name from query param
+          targetCategory = allCategories.find(cat => 
+            cat.category_name.toLowerCase() === urlCategory.toLowerCase()
+          );
+        }
+        
+        if (targetCategory) {
+          setCurrentCategory(targetCategory);
+          setSubcategories(targetCategory.subcategories || []);
+          
+          // Fetch products for this category
+          const productsRes = await api.get(`/products/?category=${targetCategory.id}`);
+          setProducts(productsRes.data);
+        } else {
+          // No specific category - show all products
+          setCurrentCategory(null);
+          setSubcategories([]);
+          
+          // Fetch all products
+          const productsRes = await api.get('/products/');
+          setProducts(productsRes.data);
+        }
+        
+        setLoading(false);
+      } catch (err) {
+        console.error('Error fetching data:', err);
+        setError('Failed to load data. Please try again later.');
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [categoryId, urlCategory]);
+
+  // Helper function to get image URL
+  const getImageUrl = (imagePath) => {
+    if (!imagePath) return 'https://via.placeholder.com/400x300?text=No+Image';
+    if (imagePath.startsWith('http')) return imagePath;
+    return `http://127.0.0.1:8000${imagePath}`;
   };
 
-  // Sample products
-  const products = [
-    { id: 1, name: "Fresh Organic Tomatoes", price: 2.99, oldPrice: 3.99, image: "https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=400&h=400&fit=crop", rating: 4.8, reviews: 128, badge: "Best Seller" },
-    { id: 2, name: "Organic Carrots", price: 1.99, oldPrice: 2.49, image: "https://images.unsplash.com/photo-1598170845058-32b9d6a5da37?w=400&h=400&fit=crop", rating: 4.7, reviews: 89, badge: null },
-    { id: 3, name: "Fresh Broccoli", price: 2.49, oldPrice: 2.99, image: "https://images.unsplash.com/photo-1459411621453-7b03977f4bfc?w=400&h=400&fit=crop", rating: 4.6, reviews: 76, badge: null },
-    { id: 4, name: "Red Bell Peppers", price: 3.49, oldPrice: null, image: "https://images.unsplash.com/photo-1563565375-f3fdf5c69b37?w=400&h=400&fit=crop", rating: 4.5, reviews: 54, badge: "New" },
-    { id: 5, name: "Spinach", price: 2.29, oldPrice: 2.79, image: "https://images.unsplash.com/photo-1576045057995-568f588f82fb?w=400&h=400&fit=crop", rating: 4.8, reviews: 112, badge: null },
-    { id: 6, name: "Cucumber", price: 0.99, oldPrice: null, image: "https://images.unsplash.com/photo-1449300079323-02e209d9d3a6?w=400&h=400&fit=crop", rating: 4.3, reviews: 67, badge: null },
-    { id: 7, name: "Organic Potatoes", price: 2.99, oldPrice: 3.49, image: "https://images.unsplash.com/photo-1518977676601-b53f82a6b696?w=400&h=400&fit=crop", rating: 4.6, reviews: 93, badge: null },
-    { id: 8, name: "Green Beans", price: 2.99, oldPrice: null, image: "https://images.unsplash.com/photo-1567375698348-5d9d5ae99de0?w=400&h=400&fit=crop", rating: 4.4, reviews: 45, badge: "Organic" }
-  ];
+  // Sort products
+  const sortedProducts = [...products].sort((a, b) => {
+    switch (sortBy) {
+      case 'price-low':
+        return parseFloat(a.price) - parseFloat(b.price);
+      case 'price-high':
+        return parseFloat(b.price) - parseFloat(a.price);
+      case 'rating':
+        return (b.rating || 0) - (a.rating || 0);
+      case 'newest':
+        return new Date(b.created_at) - new Date(a.created_at);
+      default:
+        return 0;
+    }
+  });
+
+  // Filter by price range
+  const filteredProducts = sortedProducts.filter(product => {
+    const price = parseFloat(product.price);
+    return price >= priceRange[0] && price <= priceRange[1];
+  });
 
   const renderStars = (rating) => {
-    return [...Array(5)].map((_, i) => (
-      <i key={i} className={`bi ${i < Math.floor(rating) ? "bi-star-fill" : i < rating ? "bi-star-half" : "bi-star"} text-warning small`}></i>
-    ));
+    const stars = [];
+    for (let i = 1; i <= 5; i++) {
+      if (i <= Math.floor(rating || 0)) {
+        stars.push(<i key={i} className="bi bi-star-fill text-warning small"></i>);
+      } else if (i - 0.5 <= (rating || 0)) {
+        stars.push(<i key={i} className="bi bi-star-half text-warning small"></i>);
+      } else {
+        stars.push(<i key={i} className="bi bi-star text-warning small"></i>);
+      }
+    }
+    return stars;
   };
+
+  // Calculate max price for range slider
+  const maxPrice = products.length > 0 
+    ? Math.max(...products.map(p => parseFloat(p.price))) 
+    : 1000;
+
+  if (loading) {
+    return (
+      <div className="d-flex justify-content-center align-items-center vh-100">
+        <div className="spinner-border text-success" role="status">
+          <span className="visually-hidden">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="container py-5 text-center">
+        <div className="alert alert-danger" role="alert">
+          <i className="bi bi-exclamation-triangle-fill me-2"></i>
+          {error}
+        </div>
+        <button className="btn btn-success" onClick={() => window.location.reload()}>
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div>
-      {/* Category Banner */}
-      <section className="position-relative">
-        <div 
-          className="w-100" 
-          style={{ 
-            height: "350px", 
-            backgroundImage: `linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url(${categoryData.banner})`,
-            backgroundSize: "cover",
-            backgroundPosition: "center"
-          }}
-        >
-          <div className="container h-100 d-flex align-items-center">
-            <div className="text-white">
-              <span className="badge bg-success mb-3 px-3 py-2">
-                <i className="bi bi-grid-3x3-gap me-2"></i>
-                {categoryData.productCount} Products
-              </span>
-              <h1 className="display-3 fw-bold mb-3">{categoryData.name}</h1>
-              <p className="lead mb-4" style={{ maxWidth: "600px" }}>{categoryData.description}</p>
-              <div className="d-flex flex-wrap gap-2">
-                {categoryData.subcategories.map((sub, idx) => (
-                  <Link key={idx} to={`/category/${sub.toLowerCase().replace(/ & /g, "-").replace(/ /g, "-")}`} className="btn btn-outline-light rounded-pill btn-sm">
-                    {sub}
-                  </Link>
-                ))}
+      {/* Category Banner - Show if specific category selected */}
+      {currentCategory ? (
+        <section className="position-relative">
+          <div 
+            className="w-100" 
+            style={{ 
+              height: "350px", 
+              backgroundImage: `linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url(${getImageUrl(currentCategory.photo)})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center"
+            }}
+          >
+            <div className="container h-100 d-flex align-items-center">
+              <div className="text-white">
+                <span className="badge bg-success mb-3 px-3 py-2">
+                  <i className="bi bi-grid-3x3-gap me-2"></i>
+                  {products.length} Products
+                </span>
+                <h1 className="display-3 fw-bold mb-3">{currentCategory.category_name}</h1>
+                <p className="lead mb-4" style={{ maxWidth: "600px" }}>
+                  {currentCategory.description || `Browse our selection of ${currentCategory.category_name}`}
+                </p>
+                {subcategories.length > 0 && (
+                  <div className="d-flex flex-wrap gap-2">
+                    {subcategories.map((sub, idx) => (
+                      <Link 
+                        key={idx} 
+                        to={`/category/${sub.id}`} 
+                        className="btn btn-outline-light rounded-pill btn-sm"
+                      >
+                        {sub.category_name}
+                      </Link>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      ) : (
+        // All Categories Banner
+        <section className="position-relative">
+          <div 
+            className="w-100" 
+            style={{ 
+              height: "300px", 
+              backgroundImage: `linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url(https://images.unsplash.com/photo-1542838132-92c53300491e?w=1200&h=400&fit=crop)`,
+              backgroundSize: "cover",
+              backgroundPosition: "center"
+            }}
+          >
+            <div className="container h-100 d-flex align-items-center">
+              <div className="text-white">
+                <h1 className="display-3 fw-bold mb-3">All Categories</h1>
+                <p className="lead mb-4">Browse all our fresh organic products</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Breadcrumb & Filters */}
       <section className="bg-light py-3 border-bottom">
@@ -76,7 +215,9 @@ const Category = () => {
                 <ol className="breadcrumb mb-0">
                   <li className="breadcrumb-item"><Link to="/" className="text-decoration-none">Home</Link></li>
                   <li className="breadcrumb-item"><Link to="/shop" className="text-decoration-none">Shop</Link></li>
-                  <li className="breadcrumb-item active text-success fw-bold" aria-current="page">{categoryData.name}</li>
+                  <li className="breadcrumb-item active text-success fw-bold" aria-current="page">
+                    {currentCategory ? currentCategory.category_name : "All Categories"}
+                  </li>
                 </ol>
               </nav>
             </div>
@@ -124,6 +265,45 @@ const Category = () => {
                     Filters
                   </h5>
 
+                  {/* Categories List (when showing all) */}
+                  {!currentCategory && categories.length > 0 && (
+                    <div className="mb-4">
+                      <h6 className="fw-bold mb-3">Categories</h6>
+                      <div className="d-flex flex-column gap-2">
+                        {categories.map((cat) => (
+                          <Link 
+                            key={cat.id} 
+                            to={`/category/${cat.id}`}
+                            className="text-decoration-none text-dark d-flex justify-content-between align-items-center p-2 rounded hover-bg-light"
+                            style={{ background: cat.id === parseInt(categoryId) ? '#e8f5e9' : 'transparent' }}
+                          >
+                            <span>{cat.category_name}</span>
+                            <span className="badge bg-success bg-opacity-10 text-success">
+                              {cat.subcategories?.length || 0}
+                            </span>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Subcategories (when in specific category) */}
+                  {currentCategory && subcategories.length > 0 && (
+                    <div className="mb-4">
+                      <h6 className="fw-bold mb-3">Subcategories</h6>
+                      <div className="d-flex flex-column gap-2">
+                        {subcategories.map((sub, idx) => (
+                          <div key={idx} className="form-check">
+                            <input className="form-check-input" type="checkbox" id={`sub-${idx}`} />
+                            <label className="form-check-label" htmlFor={`sub-${idx}`}>
+                              {sub.category_name}
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Price Range */}
                   <div className="mb-4">
                     <h6 className="fw-bold mb-3">Price Range</h6>
@@ -131,66 +311,21 @@ const Category = () => {
                       type="range" 
                       className="form-range" 
                       min="0" 
-                      max="100" 
+                      max={maxPrice} 
                       value={priceRange[1]}
                       onChange={(e) => setPriceRange([0, parseInt(e.target.value)])}
                     />
                     <div className="d-flex justify-content-between">
-                      <span className="text-muted">$0</span>
+                      <span className="text-muted">${priceRange[0]}</span>
                       <span className="text-muted">${priceRange[1]}</span>
                     </div>
                   </div>
 
-                  {/* Subcategories */}
-                  <div className="mb-4">
-                    <h6 className="fw-bold mb-3">Subcategories</h6>
-                    <div className="d-flex flex-column gap-2">
-                      {categoryData.subcategories.map((sub, idx) => (
-                        <div key={idx} className="form-check">
-                          <input className="form-check-input" type="checkbox" id={`sub-${idx}`} />
-                          <label className="form-check-label" htmlFor={`sub-${idx}`}>
-                            {sub}
-                          </label>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Ratings */}
-                  <div className="mb-4">
-                    <h6 className="fw-bold mb-3">Minimum Rating</h6>
-                    {[5, 4, 3, 2, 1].map((rating) => (
-                      <div key={rating} className="form-check">
-                        <input className="form-check-input" type="radio" name="rating" id={`rating-${rating}`} />
-                        <label className="form-check-label" htmlFor={`rating-${rating}`}>
-                          {[...Array(5)].map((_, i) => (
-                            <i key={i} className={`bi ${i < rating ? "bi-star-fill" : "bi-star"} text-warning small`}></i>
-                          ))}
-                          <span className="ms-1 text-muted">& Up</span>
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Availability */}
-                  <div className="mb-4">
-                    <h6 className="fw-bold mb-3">Availability</h6>
-                    <div className="form-check mb-2">
-                      <input className="form-check-input" type="checkbox" id="in-stock" defaultChecked />
-                      <label className="form-check-label" htmlFor="in-stock">
-                        In Stock
-                      </label>
-                    </div>
-                    <div className="form-check">
-                      <input className="form-check-input" type="checkbox" id="on-sale" />
-                      <label className="form-check-label" htmlFor="on-sale">
-                        On Sale
-                      </label>
-                    </div>
-                  </div>
-
-                  <button className="btn btn-success w-100 rounded-pill">
-                    Apply Filters
+                  <button 
+                    className="btn btn-success w-100 rounded-pill"
+                    onClick={() => setPriceRange([0, maxPrice])}
+                  >
+                    Reset Filters
                   </button>
                 </div>
               </div>
@@ -200,95 +335,103 @@ const Category = () => {
             <div className="col-lg-9">
               {/* Results Count */}
               <div className="d-flex justify-content-between align-items-center mb-4">
-                <span className="text-muted">Showing {products.length} of {categoryData.productCount} products</span>
+                <span className="text-muted">
+                  Showing {filteredProducts.length} of {products.length} products
+                </span>
                 <div className="d-flex gap-2">
-                  <span className="badge bg-light text-dark border">New Arrivals</span>
-                  <span className="badge bg-light text-dark border">On Sale</span>
+                  {currentCategory && (
+                    <span className="badge bg-success">{currentCategory.category_name}</span>
+                  )}
                 </div>
               </div>
 
-              {/* Products */}
-              <div className={viewMode === "grid" ? "row g-4" : "d-flex flex-column gap-3"}>
-                {products.map((product) => (
-                  <div key={product.id} className={viewMode === "grid" ? "col-6 col-md-4" : "col-12"}>
-                    <div className={`card border-0 shadow-sm rounded-4 overflow-hidden product-card ${viewMode === "list" ? "flex-row" : ""}`}>
-                      <div className={`position-relative ${viewMode === "list" ? "col-md-4" : ""}`}>
-                        <img 
-                          src={product.image} 
-                          alt={product.name} 
-                          className={viewMode === "list" ? "img-fluid h-100" : "card-img-top"} 
-                          style={{ height: viewMode === "list" ? "200px" : "250px", objectFit: "cover" }}
-                        />
-                        {product.badge && (
-                          <span className="position-absolute top-0 start-0 bg-success text-white px-2 py-1 m-2 rounded-pill small fw-bold">
-                            {product.badge}
-                          </span>
-                        )}
-                        {product.oldPrice && (
-                          <span className="position-absolute top-0 end-0 bg-danger text-white px-2 py-1 m-2 rounded-pill small fw-bold">
-                            Sale
-                          </span>
-                        )}
-                        <div className="product-actions position-absolute top-50 start-50 translate-middle d-flex gap-2 opacity-0">
-                          <button className="btn btn-light rounded-circle shadow-sm" style={{ width: "40px", height: "40px" }}>
-                            <i className="bi bi-heart"></i>
-                          </button>
-                          <button className="btn btn-success rounded-circle shadow-sm" style={{ width: "40px", height: "40px" }}>
-                            <i className="bi bi-cart-plus"></i>
-                          </button>
-                          <Link to={`/product/${product.id}`} className="btn btn-light rounded-circle shadow-sm" style={{ width: "40px", height: "40px" }}>
-                            <i className="bi bi-eye"></i>
-                          </Link>
+              {/* No Products Message */}
+              {filteredProducts.length === 0 ? (
+                <div className="text-center py-5">
+                  <i className="bi bi-inbox fs-1 text-muted mb-3"></i>
+                  <h5>No products found</h5>
+                  <p className="text-muted">Try adjusting your filters or browse other categories</p>
+                  <Link to="/category" className="btn btn-success">View All Products</Link>
+                </div>
+              ) : (
+                <>
+                  {/* Products */}
+                  <div className={viewMode === "grid" ? "row g-4" : "d-flex flex-column gap-3"}>
+                    {filteredProducts.map((product) => (
+                      <div key={product.id} className={viewMode === "grid" ? "col-6 col-md-4" : "col-12"}>
+                        <div className={`card border-0 shadow-sm rounded-4 overflow-hidden product-card ${viewMode === "list" ? "flex-row" : ""}`}>
+                          <div className={`position-relative ${viewMode === "list" ? "col-md-4" : ""}`}>
+                            <img 
+                              src={getImageUrl(product.photo)} 
+                              alt={product.product_name} 
+                              className={viewMode === "list" ? "img-fluid h-100" : "card-img-top"} 
+                              style={{ height: viewMode === "list" ? "200px" : "250px", objectFit: "cover" }}
+                            />
+                            <div className="product-actions position-absolute top-50 start-50 translate-middle d-flex gap-2 opacity-0">
+                              <button className="btn btn-light rounded-circle shadow-sm" style={{ width: "40px", height: "40px" }}>
+                                <i className="bi bi-heart"></i>
+                              </button>
+                              <button className="btn btn-success rounded-circle shadow-sm" style={{ width: "40px", height: "40px" }}>
+                                <i className="bi bi-cart-plus"></i>
+                              </button>
+                              <Link 
+                                to={`/product/${product.product_url}`} 
+                                className="btn btn-light rounded-circle shadow-sm" 
+                                style={{ width: "40px", height: "40px" }}
+                              >
+                                <i className="bi bi-eye"></i>
+                              </Link>
+                            </div>
+                          </div>
+                          <div className={`card-body ${viewMode === "list" ? "col-md-8 d-flex flex-column justify-content-center" : ""}`}>
+                            <div className="mb-2">{renderStars(product.rating || 4.5)}</div>
+                            <h5 className="card-title fw-bold mb-2">{product.product_name}</h5>
+                            <p className="text-muted small mb-2">
+                              {product.category_name}
+                              {product.sub_category_name && ` > ${product.sub_category_name}`}
+                            </p>
+                            <div className="d-flex align-items-center gap-2 mb-3">
+                              <span className="text-success fw-bold fs-4">${product.price}</span>
+                            </div>
+                            {viewMode === "list" && (
+                              <p className="text-muted mb-3">{product.description?.substring(0, 100)}...</p>
+                            )}
+                            <button className="btn btn-success w-100 rounded-pill">
+                              <i className="bi bi-cart-plus me-2"></i>
+                              Add to Cart
+                            </button>
+                          </div>
                         </div>
                       </div>
-                      <div className={`card-body ${viewMode === "list" ? "col-md-8 d-flex flex-column justify-content-center" : ""}`}>
-                        <div className="mb-2">{renderStars(product.rating)}</div>
-                        <h5 className="card-title fw-bold mb-2">{product.name}</h5>
-                        <p className="text-muted small mb-2">{product.reviews} reviews</p>
-                        <div className="d-flex align-items-center gap-2 mb-3">
-                          <span className="text-success fw-bold fs-4">${product.price}</span>
-                          {product.oldPrice && (
-                            <span className="text-muted text-decoration-line-through">${product.oldPrice}</span>
-                          )}
-                        </div>
-                        {viewMode === "list" && (
-                          <p className="text-muted mb-3">Fresh organic produce sourced from local farms. Perfect for healthy cooking and nutritious meals.</p>
-                        )}
-                        <button className="btn btn-success w-100 rounded-pill">
-                          <i className="bi bi-cart-plus me-2"></i>
-                          Add to Cart
-                        </button>
-                      </div>
-                    </div>
+                    ))}
                   </div>
-                ))}
-              </div>
 
-              {/* Pagination */}
-              <nav className="mt-5">
-                <ul className="pagination justify-content-center">
-                  <li className="page-item disabled">
-                    <button className="page-link rounded-start-pill">
-                      <i className="bi bi-chevron-left"></i>
-                    </button>
-                  </li>
-                  <li className="page-item active"><button className="page-link">1</button></li>
-                  <li className="page-item"><button className="page-link">2</button></li>
-                  <li className="page-item"><button className="page-link">3</button></li>
-                  <li className="page-item"><button className="page-link">...</button></li>
-                  <li className="page-item"><button className="page-link">6</button></li>
-                  <li className="page-item">
-                    <button className="page-link rounded-end-pill">
-                      <i className="bi bi-chevron-right"></i>
-                    </button>
-                  </li>
-                </ul>
-              </nav>
+                  {/* Pagination */}
+                  {filteredProducts.length > 12 && (
+                    <nav className="mt-5">
+                      <ul className="pagination justify-content-center">
+                        <li className="page-item disabled">
+                          <button className="page-link rounded-start-pill">
+                            <i className="bi bi-chevron-left"></i>
+                          </button>
+                        </li>
+                        <li className="page-item active"><button className="page-link">1</button></li>
+                        <li className="page-item"><button className="page-link">2</button></li>
+                        <li className="page-item"><button className="page-link">3</button></li>
+                        <li className="page-item">
+                          <button className="page-link rounded-end-pill">
+                            <i className="bi bi-chevron-right"></i>
+                          </button>
+                        </li>
+                      </ul>
+                    </nav>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>
       </section>
-
 
       <style>{`
         .product-card:hover .product-actions {
@@ -311,6 +454,9 @@ const Category = () => {
         }
         .page-link {
           color: #198754;
+        }
+        .hover-bg-light:hover {
+          background-color: #f8f9fa !important;
         }
       `}</style>
     </div>

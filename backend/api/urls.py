@@ -15,6 +15,8 @@ urlpatterns = [
     
     # Categories & Products
     path('categories/', CategoryListAPI.as_view(), name='categories'),
+    path('categories/<int:id>/', CategoryDetailAPI.as_view(), name='category-detail'),
+
     path('products/', ProductListAPI.as_view(), name='products'),
     path('products/<slug:product_url>/', ProductDetailAPI.as_view(), name='product_detail'),
 ]

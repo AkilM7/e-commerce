@@ -263,7 +263,7 @@ const Home = () => {
             <div className="row g-4" style={{ overflow: "hidden" }}>
               {categories.slice(categoryIndex, categoryIndex + 4).map((category) => (
                 <div key={category.id} className="col-6 col-md-3">
-                  <Link to={`/shop?category=${category.id}`} className="text-decoration-none">
+                  <Link to={`/category/${category.id}`} className="text-decoration-none">
                     <div className="card border-0 shadow-sm h-100 category-card overflow-hidden">
                       <div className="position-relative">
                         <img 

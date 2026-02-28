@@ -208,6 +208,13 @@ class ProductListAPI(generics.ListAPIView):
         return queryset.select_related('category', 'sub_category')
 
 
+class CategoryDetailAPI(generics.RetrieveAPIView):
+    """Get specific category by ID"""
+    serializer_class = CategorySerializer
+    permission_classes = (permissions.AllowAny,)
+    queryset = Category.objects.filter(status=True)
+    lookup_field = 'id'
+    
 class ProductDetailAPI(generics.RetrieveAPIView):
     queryset = Product.objects.filter(status=True)
     serializer_class = ProductSerializer

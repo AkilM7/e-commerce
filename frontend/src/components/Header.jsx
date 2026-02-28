@@ -1,19 +1,28 @@
 import React, { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 const Header = () => {
   const [isNavCollapsed, setIsNavCollapsed] = useState(true);
+  const { user, isAuthenticated, logout } = useAuth();
   const location = useLocation();
-  const [cartCount] = useState(3); // Example cart count
+  const navigate = useNavigate();
+  const [cartCount] = useState(3);
 
   const isActive = (path) => location.pathname === path ? "active" : "";
 
   const handleNavCollapse = () => setIsNavCollapsed(!isNavCollapsed);
 
+  const handleLogout = async () => {
+    await logout();
+    navigate('/');
+  };
+
   return (
     <>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" />
-      {/* Top Bar - Dark Green Theme */}
+      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" />
+      
+      {/* Top Bar */}
       <div className="py-2 bg-success text-white small">
         <div className="container">
           <div className="row align-items-center">
@@ -55,7 +64,7 @@ const Header = () => {
             data-bs-toggle="collapse"
             data-bs-target="#navbarNav"
             aria-controls="navbarNav"
-            aria-expanded={!isNavCollapsed ? true : false}
+            aria-expanded={!isNavCollapsed}
             aria-label="Toggle navigation"
             onClick={handleNavCollapse}
           >
@@ -66,46 +75,27 @@ const Header = () => {
           <div className={`${isNavCollapsed ? 'collapse' : ''} navbar-collapse`} id="navbarNav">
             <ul className="navbar-nav mx-auto">
               <li className="nav-item mx-lg-2">
-                <Link 
-                  className={`nav-link fw-medium ${isActive('/') ? 'text-success active fw-bold' : 'text-dark'}`} 
-                  to="/"
-                >
+                <Link className={`nav-link fw-medium ${isActive('/') ? 'text-success active fw-bold' : 'text-dark'}`} to="/">
                   Home
                 </Link>
               </li>
-
               <li className="nav-item mx-lg-2">
-                <Link 
-                  className={`nav-link fw-medium ${isActive('/shop') ? 'text-success active fw-bold' : 'text-dark'}`} 
-                  to="/shop"
-                >
+                <Link className={`nav-link fw-medium ${isActive('/shop') ? 'text-success active fw-bold' : 'text-dark'}`} to="/shop">
                   Shop
                 </Link>
               </li>
-
               <li className="nav-item mx-lg-2">
-                <Link 
-                  className={`nav-link fw-medium ${isActive('/category') ? 'text-success active fw-bold' : 'text-dark'}`} 
-                  to="/category"
-                >
+                <Link className={`nav-link fw-medium ${isActive('/category') ? 'text-success active fw-bold' : 'text-dark'}`} to="/category">
                   Category
                 </Link>
               </li>
-
               <li className="nav-item mx-lg-2">
-                <Link 
-                  className={`nav-link fw-medium ${isActive('/about') ? 'text-success active fw-bold' : 'text-dark'}`} 
-                  to="/about"
-                >
+                <Link className={`nav-link fw-medium ${isActive('/about') ? 'text-success active fw-bold' : 'text-dark'}`} to="/about">
                   About
                 </Link>
               </li>
-
               <li className="nav-item mx-lg-2">
-                <Link 
-                  className={`nav-link fw-medium ${isActive('/contact') ? 'text-success active fw-bold' : 'text-dark'}`} 
-                  to="/contact"
-                >
+                <Link className={`nav-link fw-medium ${isActive('/contact') ? 'text-success active fw-bold' : 'text-dark'}`} to="/contact">
                   Contact
                 </Link>
               </li>
@@ -128,22 +118,79 @@ const Header = () => {
                 </div>
               </li>
 
-              {/* User */}
+              {/* User Dropdown */}
               <li className="nav-item dropdown me-lg-3">
                 <a
-                  className="nav-link text-dark"
+                  className="nav-link text-dark dropdown-toggle d-flex align-items-center"
                   href="#"
                   role="button"
                   data-bs-toggle="dropdown"
+                  aria-expanded="false"
                 >
                   <i className="bi bi-person fs-5"></i>
+                  {isAuthenticated && user && (
+                    <span className="ms-2 d-none d-lg-inline small fw-medium">
+                      {user.first_name || user.name || user.email}
+                    </span>
+                  )}
                 </a>
                 <ul className="dropdown-menu dropdown-menu-end border-0 shadow-lg rounded-3">
-                  <li><Link className="dropdown-item py-2" to="/login">Login</Link></li>
-                  <li><Link className="dropdown-item py-2" to="/register">Register</Link></li>
-                  <li><hr className="dropdown-divider" /></li>
-                  <li><Link className="dropdown-item py-2" to="/profile">My Account</Link></li>
-                  <li><Link className="dropdown-item py-2" to="/orders">My Orders</Link></li>
+                  
+                  {/* NOT LOGGED IN */}
+                  {!isAuthenticated ? (
+                    <>
+                      <li>
+                        <Link className="dropdown-item py-2" to="/login">
+                          <i className="bi bi-box-arrow-in-right me-2 text-success"></i>
+                          Login
+                        </Link>
+                      </li>
+                      <li>
+                        <Link className="dropdown-item py-2" to="/register">
+                          <i className="bi bi-person-plus me-2 text-success"></i>
+                          Register
+                        </Link>
+                      </li>
+                    </>
+                  ) : (
+                    <>
+                      {/* LOGGED IN */}
+                      <li className="dropdown-header px-3 py-2">
+                        <small className="text-muted">Welcome,</small>
+                        <div className="fw-bold text-success">{user.first_name || user.name || 'User'}</div>
+                      </li>
+                      <li><hr className="dropdown-divider" /></li>
+                      <li>
+                        <Link className="dropdown-item py-2" to="/profile">
+                          <i className="bi bi-person-circle me-2 text-success"></i>
+                          My Account
+                        </Link>
+                      </li>
+                      <li>
+                        <Link className="dropdown-item py-2" to="/orders">
+                          <i className="bi bi-bag me-2 text-success"></i>
+                          My Orders
+                        </Link>
+                      </li>
+                      <li>
+                        <Link className="dropdown-item py-2" to="/wishlist">
+                          <i className="bi bi-heart me-2 text-success"></i>
+                          Wishlist
+                        </Link>
+                      </li>
+                      <li><hr className="dropdown-divider" /></li>
+                      <li>
+                        <button 
+                          className="dropdown-item py-2 text-danger" 
+                          onClick={handleLogout}
+                        >
+                          <i className="bi bi-box-arrow-right me-2"></i>
+                          Logout
+                        </button>
+                      </li>
+                    </>
+                  )}
+                  
                 </ul>
               </li>
 
@@ -156,7 +203,6 @@ const Header = () => {
                   {cartCount > 0 && (
                     <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style={{ fontSize: "0.7rem" }}>
                       {cartCount}
-                      <span className="visually-hidden">items in cart</span>
                     </span>
                   )}
                 </Link>
@@ -166,19 +212,13 @@ const Header = () => {
         </div>
       </nav>
 
-      {/* Custom Styles */}
       <style>{`
-        .dropdown-menu {
-          animation: fadeIn 0.2s ease-in-out;
-        }
+        .dropdown-menu { animation: fadeIn 0.2s ease-in-out; min-width: 220px; }
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(10px); }
           to { opacity: 1; transform: translateY(0); }
         }
-        .nav-link {
-          position: relative;
-          padding: 0.5rem 1rem !important;
-        }
+        .nav-link { position: relative; padding: 0.5rem 1rem !important; }
         .nav-link.active::after {
           content: '';
           position: absolute;
@@ -189,15 +229,10 @@ const Header = () => {
           background-color: #198754;
           border-radius: 2px;
         }
-        .navbar-toggler:focus {
-          box-shadow: none;
-        }
+        .navbar-toggler:focus { box-shadow: none; }
+        .dropdown-toggle::after { display: none; }
         @media (max-width: 991px) {
-          .nav-link.active::after {
-            left: 0;
-            right: auto;
-            width: 30px;
-          }
+          .nav-link.active::after { left: 0; right: auto; width: 30px; }
         }
       `}</style>
     </>

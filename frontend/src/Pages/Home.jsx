@@ -1,33 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import api from "../api/axios";
 
 const Home = () => {
-  // Sample data for categories
-  const categories = [
-    { id: 1, name: "Vegetables", image: "https://images.unsplash.com/photo-1540420773420-3366772f4999?w=400&h=300&fit=crop", count: "50+ Items" },
-    { id: 2, name: "Fruits", image: "https://images.unsplash.com/photo-1619566636858-adf3ef46400b?w=400&h=300&fit=crop", count: "40+ Items" },
-    { id: 3, name: "Organic", image: "https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=400&h=300&fit=crop", count: "30+ Items" },
-    { id: 4, name: "Fresh Juice", image: "https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=400&h=300&fit=crop", count: "20+ Items" },
-    { id: 5, name: "Dried Fruits", image: "https://images.unsplash.com/photo-1596560548464-f010549b84d7?w=400&h=300&fit=crop", count: "25+ Items" },
-    { id: 6, name: "Salads", image: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&h=300&fit=crop", count: "15+ Items" },
-  ];
+  const [categories, setCategories] = useState([]);
+  const [featuredProducts, setFeaturedProducts] = useState([]);
+  const [newArrivals, setNewArrivals] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Sample data for products
-  const featuredProducts = [
-    { id: 1, name: "Fresh Tomatoes", price: 2.99, oldPrice: 3.99, image: "https://images.unsplash.com/photo-1546094096-0df4bcaaa337?w=400&h=400&fit=crop", rating: 4.5, discount: 25 },
-    { id: 2, name: "Organic Carrots", price: 1.99, oldPrice: 2.49, image: "https://images.unsplash.com/photo-1598170845058-32b9d6a5da37?w=400&h=400&fit=crop", rating: 4.8, discount: 20 },
-    { id: 3, name: "Red Apples", price: 4.99, oldPrice: 5.99, image: "https://images.unsplash.com/photo-1584306670957-acf935f5033c?w=400&h=400&fit=crop", rating: 4.7, discount: 15 },
-    { id: 4, name: "Fresh Broccoli", price: 2.49, oldPrice: 2.99, image: "https://images.unsplash.com/photo-1459411621453-7b03977f4bfc?w=400&h=400&fit=crop", rating: 4.6, discount: 10 },
-  ];
-
-  const newArrivals = [
-    { id: 5, name: "Avocado", price: 1.99, oldPrice: null, image: "https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?w=400&h=400&fit=crop", rating: 4.9, badge: "New" },
-    { id: 6, name: "Spinach", price: 2.29, oldPrice: 2.79, image: "https://images.unsplash.com/photo-1576045057995-568f588f82fb?w=400&h=400&fit=crop", rating: 4.4, badge: "New" },
-    { id: 7, name: "Strawberries", price: 5.99, oldPrice: 6.99, image: "https://images.unsplash.com/photo-1464965911861-746a04b4bca6?w=400&h=400&fit=crop", rating: 4.8, badge: "New" },
-    { id: 8, name: "Lemons", price: 3.49, oldPrice: null, image: "https://images.unsplash.com/photo-1590502593747-42a996133562?w=300&h=300&fit=crop", rating: 4.5, badge: "New" },
-  ];
-
-  // Hero slider data
   const heroSlides = [
     {
       id: 1,
@@ -58,6 +39,36 @@ const Home = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [categoryIndex, setCategoryIndex] = useState(0);
 
+  // Fetch data from API
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        
+        // Fetch only main categories (API now filters parent__isnull=True)
+        const categoriesRes = await api.get('/categories/');
+        console.log('Categories:', categoriesRes.data); // Debug log
+        setCategories(categoriesRes.data);
+        
+        // Fetch products
+        const productsRes = await api.get('/products/');
+        const allProducts = productsRes.data;
+        
+        // Split: first 4 as featured, next 4 as new arrivals
+        setFeaturedProducts(allProducts.slice(0, 4));
+        setNewArrivals(allProducts.slice(4, 8));
+        
+        setLoading(false);
+      } catch (err) {
+        console.error('Error fetching data:', err);
+        setError('Failed to load data. Please try again later.');
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
   // Auto-slide hero carousel
   useEffect(() => {
     const interval = setInterval(() => {
@@ -65,6 +76,13 @@ const Home = () => {
     }, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  // Helper function to get image URL
+  const getImageUrl = (imagePath) => {
+    if (!imagePath) return 'https://via.placeholder.com/400x300?text=No+Image';
+    if (imagePath.startsWith('http')) return imagePath;
+    return `http://127.0.0.1:8000${imagePath}`;
+  };
 
   // Render stars for rating
   const renderStars = (rating) => {
@@ -89,9 +107,32 @@ const Home = () => {
     setCategoryIndex((prev) => (prev - 1 + Math.max(1, categories.length - 3)) % Math.max(1, categories.length - 3));
   };
 
+  if (loading) {
+    return (
+      <div className="d-flex justify-content-center align-items-center vh-100">
+        <div className="spinner-border text-success" role="status">
+          <span className="visually-hidden">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="container py-5 text-center">
+        <div className="alert alert-danger" role="alert">
+          <i className="bi bi-exclamation-triangle-fill me-2"></i>
+          {error}
+        </div>
+        <button className="btn btn-success" onClick={() => window.location.reload()}>
+          Retry
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div>
-      {/* Add Bootstrap Icons CSS */}
       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" />
 
       {/* Hero Slider */}
@@ -201,7 +242,7 @@ const Home = () => {
         </div>
       </section>
 
-      {/* Category Slider */}
+      {/* Category Slider - FIXED */}
       <section className="py-5">
         <div className="container">
           <div className="d-flex justify-content-between align-items-center mb-4">
@@ -216,29 +257,40 @@ const Home = () => {
             </div>
           </div>
           
-          <div className="row g-4" style={{ overflow: "hidden" }}>
-            {categories.slice(categoryIndex, categoryIndex + 4).map((category) => (
-              <div key={category.id} className="col-6 col-md-3">
-                <Link to={`/shop?category=${category.name.toLowerCase()}`} className="text-decoration-none">
-                  <div className="card border-0 shadow-sm h-100 category-card overflow-hidden">
-                    <div className="position-relative">
-                      <img src={category.image} alt={category.name} className="card-img-top" style={{ height: "180px", objectFit: "cover" }} />
-                      <div className="card-img-overlay d-flex align-items-end">
-                        <div className="bg-white bg-opacity-95 rounded-3 px-3 py-2 w-100 text-center">
-                          <h5 className="mb-0 text-dark fw-bold">{category.name}</h5>
-                          <small className="text-muted">{category.count}</small>
+          {categories.length === 0 ? (
+            <div className="text-center text-muted py-5">No categories available</div>
+          ) : (
+            <div className="row g-4" style={{ overflow: "hidden" }}>
+              {categories.slice(categoryIndex, categoryIndex + 4).map((category) => (
+                <div key={category.id} className="col-6 col-md-3">
+                  <Link to={`/shop?category=${category.id}`} className="text-decoration-none">
+                    <div className="card border-0 shadow-sm h-100 category-card overflow-hidden">
+                      <div className="position-relative">
+                        <img 
+                          src={getImageUrl(category.photo)} 
+                          alt={category.category_name} 
+                          className="card-img-top" 
+                          style={{ height: "180px", objectFit: "cover" }} 
+                        />
+                        <div className="card-img-overlay d-flex align-items-end">
+                          <div className="bg-white bg-opacity-95 rounded-3 px-3 py-2 w-100 text-center">
+                            <h5 className="mb-0 text-dark fw-bold">{category.category_name}</h5>
+                            <small className="text-muted">
+                              {category.subcategories?.length || 0} Subcategories
+                            </small>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                </Link>
-              </div>
-            ))}
-          </div>
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
-      {/* Featured Products Slider */}
+      {/* Featured Products */}
       <section className="py-5 bg-light">
         <div className="container">
           <div className="text-center mb-5">
@@ -247,49 +299,48 @@ const Home = () => {
             <p className="text-muted">Handpicked selection of our best products</p>
           </div>
 
-          <div id="productCarousel" className="carousel slide" data-bs-ride="carousel">
-            <div className="carousel-inner">
-              <div className="carousel-item active">
-                <div className="row g-4">
-                  {featuredProducts.map((product) => (
-                    <div key={product.id} className="col-6 col-lg-3">
-                      <div className="card border-0 shadow-sm h-100 product-card">
-                        <div className="position-relative overflow-hidden">
-                          <img src={product.image} alt={product.name} className="card-img-top" style={{ height: "250px", objectFit: "cover" }} />
-                          {product.discount && (
-                            <span className="position-absolute top-0 start-0 bg-danger text-white px-2 py-1 m-2 rounded-pill small">
-                              -{product.discount}%
-                            </span>
-                          )}
-                          <div className="product-actions position-absolute top-50 start-50 translate-middle d-flex gap-2 opacity-0">
-                            <button className="btn btn-light rounded-circle" style={{ width: "40px", height: "40px" }}>
-                              <i className="bi bi-heart"></i>
-                            </button>
-                            <button className="btn btn-success rounded-circle" style={{ width: "40px", height: "40px" }}>
-                              <i className="bi bi-cart-plus"></i>
-                            </button>
-                            <button className="btn btn-light rounded-circle" style={{ width: "40px", height: "40px" }}>
-                              <i className="bi bi-eye"></i>
-                            </button>
-                          </div>
-                        </div>
-                        <div className="card-body text-center">
-                          <div className="mb-2 small">{renderStars(product.rating)}</div>
-                          <h5 className="card-title h6 fw-bold">{product.name}</h5>
-                          <div className="d-flex justify-content-center align-items-center gap-2">
-                            <span className="text-success fw-bold fs-5">${product.price}</span>
-                            {product.oldPrice && (
-                              <span className="text-muted text-decoration-line-through small">${product.oldPrice}</span>
-                            )}
-                          </div>
-                        </div>
+          {featuredProducts.length === 0 ? (
+            <div className="text-center text-muted py-5">No featured products available</div>
+          ) : (
+            <div className="row g-4">
+              {featuredProducts.map((product) => (
+                <div key={product.id} className="col-6 col-lg-3">
+                  <div className="card border-0 shadow-sm h-100 product-card">
+                    <div className="position-relative overflow-hidden">
+                      <img 
+                        src={getImageUrl(product.photo)} 
+                        alt={product.product_name} 
+                        className="card-img-top" 
+                        style={{ height: "250px", objectFit: "cover" }} 
+                      />
+                      <div className="product-actions position-absolute top-50 start-50 translate-middle d-flex gap-2 opacity-0">
+                        <button className="btn btn-light rounded-circle" style={{ width: "40px", height: "40px" }}>
+                          <i className="bi bi-heart"></i>
+                        </button>
+                        <button className="btn btn-success rounded-circle" style={{ width: "40px", height: "40px" }}>
+                          <i className="bi bi-cart-plus"></i>
+                        </button>
+                        <Link 
+                          to={`/product/${product.product_url}`} 
+                          className="btn btn-light rounded-circle" 
+                          style={{ width: "40px", height: "40px" }}
+                        >
+                          <i className="bi bi-eye"></i>
+                        </Link>
                       </div>
                     </div>
-                  ))}
+                    <div className="card-body text-center">
+                      <div className="mb-2 small">{renderStars(4.5)}</div>
+                      <h5 className="card-title h6 fw-bold">{product.product_name}</h5>
+                      <div className="d-flex justify-content-center align-items-center gap-2">
+                        <span className="text-success fw-bold fs-5">${product.price}</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ))}
             </div>
-          </div>
+          )}
           
           <div className="text-center mt-4">
             <Link to="/shop" className="btn btn-outline-success rounded-pill px-4">View All Products</Link>
@@ -335,7 +386,7 @@ const Home = () => {
         </div>
       </section>
 
-      {/* New Arrivals - Product List */}
+      {/* New Arrivals */}
       <section className="py-5">
         <div className="container">
           <div className="d-flex justify-content-between align-items-center mb-4">
@@ -346,47 +397,50 @@ const Home = () => {
             <Link to="/shop" className="text-success text-decoration-none fw-bold">View All <i className="bi bi-arrow-right"></i></Link>
           </div>
 
-          <div className="row g-4">
-            {newArrivals.map((product) => (
-              <div key={product.id} className="col-6 col-md-4 col-lg-3">
-                <div className="card border-0 shadow-sm h-100 product-card">
-                  <div className="position-relative overflow-hidden">
-                    <img src={product.image} alt={product.name} className="card-img-top" style={{ height: "220px", objectFit: "cover" }} />
-                    {product.badge && (
+          {newArrivals.length === 0 ? (
+            <div className="text-center text-muted py-5">No new arrivals available</div>
+          ) : (
+            <div className="row g-4">
+              {newArrivals.map((product) => (
+                <div key={product.id} className="col-6 col-md-4 col-lg-3">
+                  <div className="card border-0 shadow-sm h-100 product-card">
+                    <div className="position-relative overflow-hidden">
+                      <img 
+                        src={getImageUrl(product.photo)} 
+                        alt={product.product_name} 
+                        className="card-img-top" 
+                        style={{ height: "220px", objectFit: "cover" }} 
+                      />
                       <span className="position-absolute top-0 end-0 bg-success text-white px-2 py-1 m-2 rounded-pill small">
-                        {product.badge}
+                        New
                       </span>
-                    )}
-                    <div className="product-actions position-absolute top-50 start-50 translate-middle d-flex gap-2 opacity-0">
-                      <button className="btn btn-light rounded-circle shadow-sm" style={{ width: "40px", height: "40px" }}>
-                        <i className="bi bi-heart"></i>
-                      </button>
-                      <button className="btn btn-success rounded-circle shadow-sm" style={{ width: "40px", height: "40px" }}>
-                        <i className="bi bi-cart-plus"></i>
-                      </button>
-                    </div>
-                  </div>
-                  <div className="card-body">
-                    <div className="mb-2 small">{renderStars(product.rating)}</div>
-                    <h5 className="card-title h6 fw-bold mb-2">{product.name}</h5>
-                    <div className="d-flex justify-content-between align-items-center">
-                      <div>
-                        <span className="text-success fw-bold fs-5">${product.price}</span>
-                        {product.oldPrice && (
-                          <span className="text-muted text-decoration-line-through small ms-2">${product.oldPrice}</span>
-                        )}
+                      <div className="product-actions position-absolute top-50 start-50 translate-middle d-flex gap-2 opacity-0">
+                        <button className="btn btn-light rounded-circle shadow-sm" style={{ width: "40px", height: "40px" }}>
+                          <i className="bi bi-heart"></i>
+                        </button>
+                        <button className="btn btn-success rounded-circle shadow-sm" style={{ width: "40px", height: "40px" }}>
+                          <i className="bi bi-cart-plus"></i>
+                        </button>
                       </div>
-                      <button className="btn btn-outline-success btn-sm rounded-pill">Add</button>
+                    </div>
+                    <div className="card-body">
+                      <div className="mb-2 small">{renderStars(4.5)}</div>
+                      <h5 className="card-title h6 fw-bold mb-2">{product.product_name}</h5>
+                      <div className="d-flex justify-content-between align-items-center">
+                        <div>
+                          <span className="text-success fw-bold fs-5">${product.price}</span>
+                        </div>
+                        <button className="btn btn-outline-success btn-sm rounded-pill">Add</button>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
-      {/* Custom Styles */}
       <style>{`
         .product-card:hover .product-actions {
           opacity: 1 !important;

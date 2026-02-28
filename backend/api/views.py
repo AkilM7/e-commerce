@@ -7,8 +7,8 @@ from django.contrib.auth import get_user_model
 from social_django.utils import load_strategy, load_backend
 from social_core.exceptions import MissingBackend, AuthTokenError, AuthForbidden
 import requests
-
 from .models import Category, Product
+
 from .serializers import (
     UserSerializer, UserLoginSerializer, UserProfileSerializer,
     SocialAuthSerializer, TokenSerializer, CategorySerializer, ProductSerializer
@@ -166,21 +166,51 @@ class LogoutAPI(APIView):
         except Exception as e:
             return Response(status=status.HTTP_400_BAD_REQUEST)
 
-# Product and Category Views
+
+
 class CategoryListAPI(generics.ListAPIView):
-    queryset = Category.objects.filter(status=True)
     serializer_class = CategorySerializer
     permission_classes = (permissions.AllowAny,)
+    
+    def get_queryset(self):
+        # Only return main categories (where parent is NULL)
+        # This will include their subcategories via the serializer
+        return Category.objects.filter(status=True, parent__isnull=True)
+
+
+class SubCategoryListAPI(generics.ListAPIView):
+    """Optional: API to get subcategories of a specific parent"""
+    serializer_class = CategorySerializer
+    permission_classes = (permissions.AllowAny,)
+    
+    def get_queryset(self):
+        parent_id = self.kwargs.get('parent_id')
+        return Category.objects.filter(status=True, parent_id=parent_id)
+
 
 class ProductListAPI(generics.ListAPIView):
-    queryset = Product.objects.filter(status=True)
     serializer_class = ProductSerializer
     permission_classes = (permissions.AllowAny,)
+    
+    def get_queryset(self):
+        queryset = Product.objects.filter(status=True)
+        
+        # Filter by category
+        category = self.request.query_params.get('category', None)
+        if category:
+            queryset = queryset.filter(category__id=category)
+        
+        # Filter by sub_category
+        sub_category = self.request.query_params.get('sub_category', None)
+        if sub_category:
+            queryset = queryset.filter(sub_category__id=sub_category)
+            
+        return queryset.select_related('category', 'sub_category')
+
 
 class ProductDetailAPI(generics.RetrieveAPIView):
     queryset = Product.objects.filter(status=True)
     serializer_class = ProductSerializer
     lookup_field = 'product_url'
     permission_classes = (permissions.AllowAny,)
-
     

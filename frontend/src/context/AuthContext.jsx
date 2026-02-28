@@ -9,50 +9,72 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     // Check for stored auth on mount
-    const storedUser = localStorage.getItem('user') || sessionStorage.getItem('user');
     const token = localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
+    const storedUser = localStorage.getItem('user') || sessionStorage.getItem('user');
     
-    if (storedUser && token) {
-      setUser(JSON.parse(storedUser));
-      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    if (token && storedUser) {
+      try {
+        const parsedUser = JSON.parse(storedUser);
+        setUser(parsedUser);
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      } catch (error) {
+        console.error('Error parsing stored user:', error);
+        // Clear invalid data
+        localStorage.removeItem('user');
+        sessionStorage.removeItem('user');
+      }
     }
     setLoading(false);
   }, []);
 
   const login = async (email, password, remember = false) => {
-    const response = await api.post('/login/', { email, password });
-    const { access, refresh, user } = response.data;
-    
-    if (remember) {
-      localStorage.setItem('access_token', access);
-      localStorage.setItem('refresh_token', refresh);
-      localStorage.setItem('user', JSON.stringify(user));
-    } else {
-      sessionStorage.setItem('access_token', access);
-      sessionStorage.setItem('refresh_token', refresh);
-      sessionStorage.setItem('user', JSON.stringify(user));
+    try {
+      const response = await api.post('/login/', { email, password });
+      const { access, refresh, user } = response.data;
+      
+      if (remember) {
+        localStorage.setItem('access_token', access);
+        localStorage.setItem('refresh_token', refresh);
+        localStorage.setItem('user', JSON.stringify(user));
+      } else {
+        sessionStorage.setItem('access_token', access);
+        sessionStorage.setItem('refresh_token', refresh);
+        sessionStorage.setItem('user', JSON.stringify(user));
+      }
+      
+      api.defaults.headers.common['Authorization'] = `Bearer ${access}`;
+      setUser(user);
+      return { success: true, user };
+    } catch (error) {
+      return { 
+        success: false, 
+        error: error.response?.data?.message || 'Login failed' 
+      };
     }
-    
-    api.defaults.headers.common['Authorization'] = `Bearer ${access}`;
-    setUser(user);
-    return user;
   };
 
   const socialLogin = async (provider, accessToken) => {
-    const response = await api.post('/social-login/', {
-      provider,
-      access_token: accessToken,
-    });
-    
-    const { access, refresh, user } = response.data;
-    
-    localStorage.setItem('access_token', access);
-    localStorage.setItem('refresh_token', refresh);
-    localStorage.setItem('user', JSON.stringify(user));
-    
-    api.defaults.headers.common['Authorization'] = `Bearer ${access}`;
-    setUser(user);
-    return user;
+    try {
+      const response = await api.post('/social-login/', {
+        provider,
+        access_token: accessToken,
+      });
+      
+      const { access, refresh, user } = response.data;
+      
+      localStorage.setItem('access_token', access);
+      localStorage.setItem('refresh_token', refresh);
+      localStorage.setItem('user', JSON.stringify(user));
+      
+      api.defaults.headers.common['Authorization'] = `Bearer ${access}`;
+      setUser(user);
+      return { success: true, user };
+    } catch (error) {
+      return { 
+        success: false, 
+        error: error.response?.data?.message || 'Social login failed' 
+      };
+    }
   };
 
   const logout = async () => {
@@ -64,36 +86,87 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
-      localStorage.clear();
-      sessionStorage.clear();
+      // Clear all auth data
+      const keysToRemove = [
+        'access_token', 
+        'refresh_token', 
+        'user'
+      ];
+      
+      keysToRemove.forEach(key => {
+        localStorage.removeItem(key);
+        sessionStorage.removeItem(key);
+      });
+      
       delete api.defaults.headers.common['Authorization'];
       setUser(null);
     }
   };
 
   const updateProfile = async (data) => {
-    const response = await api.patch('/profile/', data);
-    const updatedUser = response.data;
-    
-    const storage = localStorage.getItem('user') ? localStorage : sessionStorage;
-    storage.setItem('user', JSON.stringify(updatedUser));
-    setUser(updatedUser);
-    return updatedUser;
+    try {
+      const response = await api.patch('/profile/', data);
+      const updatedUser = response.data;
+      
+      // Update in whichever storage is being used
+      if (localStorage.getItem('user')) {
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+      } else if (sessionStorage.getItem('user')) {
+        sessionStorage.setItem('user', JSON.stringify(updatedUser));
+      }
+      
+      setUser(updatedUser);
+      return { success: true, user: updatedUser };
+    } catch (error) {
+      return { 
+        success: false, 
+        error: error.response?.data?.message || 'Update failed' 
+      };
+    }
   };
 
+  // Helper to check if user has specific role/permission
+  const hasRole = (role) => {
+    return user?.role === role || user?.roles?.includes(role);
+  };
+
+  const value = {
+    user,
+    login,
+    socialLogin,
+    logout,
+    updateProfile,
+    loading,
+    isAuthenticated: !!user,
+    hasRole
+  };
+
+  // Don't render children until auth check is complete
+  if (loading) {
+    return (
+      <div className="d-flex justify-content-center align-items-center vh-100">
+        <div className="spinner-border text-success" role="status">
+          <span className="visually-hidden">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <AuthContext.Provider value={{
-      user,
-      login,
-      socialLogin,
-      logout,
-      updateProfile,
-      loading,
-      isAuthenticated: !!user
-    }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
 };
 
-export const useAuth = () => useContext(AuthContext);
+// Custom hook with error handling
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
+
+// Default export for convenience
+export default AuthContext;
